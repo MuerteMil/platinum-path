@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Platinum Path</title>
+  <style>
+    :root{--bg:#0e1116;--muted:#9aa4b2;--text:#e3e3e8;--accent:#c832a0;--accent-rgb:200,50,160;--border:rgba(227,227,232,.12);--shadow:0 10px 30px rgba(0,0,0,.35);--radius:16px;}
+    *{box-sizing:border-box}
+
+    /* Ensure the background always covers the full viewport (even with few items) */
+    html{height:100%;background:var(--bg)}
+    body{height:100%;min-height:100%;position:relative;isolation:isolate;background:transparent;}
+
+    /*
+      We render the decorative gradient on a fixed layer so it stays static while scrolling.
+      This also avoids the "cut" background effect when content height is shorter than the viewport.
+    */
+    body{
+      margin:0;
+      min-height:100vh;
+      position:relative;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Arial;
+      background:var(--bg);
+      color:var(--text);
+      overflow-x:hidden;
+      padding-top: calc(var(--header-h, 0px) + var(--summary-h, 0px));
+    }
+    /*
+      Background layers:
+      - ::before holds the base gradients.
+      - ::after adds the soft blurred "glow" accent (the colored blur you liked).
+      Both are fixed so they stay static while scrolling.
+    */
+    body::before{
+      content:"";
+      position:fixed;
+      inset:0;
+      z-index:-2;
+      pointer-events:none;
+      background:
+        radial-gradient(1200px 700px at 35% 12%, rgba(var(--accent-rgb),.16), transparent 55%),
+        radial-gradient(900px 600px at 65% 6%, rgba(227,227,232,.10), transparent 50%),
+        var(--bg);
+      transform:translateZ(0); /* helps some GPUs keep it crisp in Electron */
+    }
+    body::after{
+      content:"";
+      position:fixed;
+      inset:-15%;
+      z-index:-1;
+      pointer-events:none;
+      background:
+        radial-gradient(520px 420px at 38% 14%, rgba(var(--accent-rgb),.55), transparent 60%),
+        radial-gradient(420px 360px at 62% 18%, rgba(var(--accent-rgb),.22), transparent 65%);
+      filter: blur(60px);
+      opacity: .85;
+      transform: translateZ(0);
+    }
+    header{position:fixed;top:0;left:0;right:0;z-index:10;background:rgba(14,17,22,.72);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);}
+    .sticky-shell{
+      position: fixed;
+      top: var(--header-h, 0px);
+      left: 0;
+      right: 0;
+      z-index: 9;
+      background: rgba(14,17,22,0.92);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .wrap{max-width:1200px;margin:0 auto;padding:18px}
+    .top{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+    .brand{display:flex;gap:12px;align-items:center}
+    .logo{width:42px;height:42px;border-radius:12px;box-shadow:var(--shadow);border:1px solid rgba(227,227,232,.18);display:block;object-fit:cover}
+    h1{font-size:18px;margin:0}
+    .sub{font-size:12px;color:var(--muted);margin:2px 0 0}
+    .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    input[type="search"],select,input[type="text"]{background:rgba(20,26,34,.85);color:var(--text);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:10px 12px;outline:none;min-width:180px}
+    input[type="search"]{min-width:240px}
+
+    /* Settings helper links */
+    .link{margin-left:10px;font-size:12px;color:rgba(var(--accent-rgb),.95);text-decoration:none;cursor:pointer}
+    .link:hover{text-decoration:underline}
+    input[type="search"]::placeholder{color:rgba(154,164,178,.8)}
+    .btn{background:rgba(20,26,34,.85);color:var(--text);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:10px 12px;cursor:pointer;transition:transform .08s ease,border-color .2s ease;user-select:none}
+    .btn:hover{border-color:rgba(var(--accent-rgb),.55)}
+    .btn:active{transform:translateY(1px)}
+    .btn.primary{background:rgba(var(--accent-rgb),.15);border-color:rgba(var(--accent-rgb),.55)}
+    main{padding:18px}
+    .grid{max-width:1200px;margin:0 auto;display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));padding-bottom:32px}
+    .card{background:rgba(20,26,34,.72);border:1px solid rgba(255,255,255,.18);border-radius:var(--radius);overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.25);display:flex;flex-direction:column;min-height:330px}
+    .cover{height:140px;background:rgba(227,227,232,.08);border-bottom:1px solid var(--border)}
+    .cover img{width:100%;height:100%;object-fit:cover;display:block}
+    .body{padding:12px;display:flex;flex-direction:column;gap:10px;flex:1}
+    .title{font-weight:800;font-size:14px;line-height:1.2}
+    .meta{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .pill{border:1px solid rgba(255,255,255,.18);border-radius:14px;padding:8px 10px;font-size:12px;background:rgba(14,17,22,.35)}
+    .pill .k{color:var(--muted);font-size:11px;display:block;margin-bottom:2px}
+    .tag{font-size:12px;padding:6px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.18);background:rgba(14,17,22,.35);color:var(--muted)}
+    .footer{padding:10px 12px 12px;display:flex;gap:8px;justify-content:space-between;align-items:center;border-top:1px solid var(--border)}
+    .mini{display:flex;gap:8px}
+    .iconbtn{width:38px;height:38px;display:grid;place-items:center;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:rgba(14,17,22,.35);cursor:pointer}
+    dialog{width:min(820px, calc(100vw - 24px));border:1px solid rgba(227,227,232,.18);border-radius:18px;background:rgba(20,26,34,.95);color:var(--text);box-shadow:var(--shadow);padding:0}
+    dialog::backdrop{background:rgba(0,0,0,.6)}
+    .modalHead{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+    .modalHead b{font-size:14px}
+    .modalBody{padding:16px}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .muted{color:var(--muted);font-size:12px}
+    .modalFoot{padding:14px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .form{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .form .full{grid-column:1 / -1}
+    label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+    textarea{width:100%;min-height:84px;resize:vertical;background:rgba(255,255,255,.10);
+        box-shadow: 0 8px 20px rgba(0,0,0,.35);color:var(--text);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:10px 12px;outline:none}
+    .stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+    .stat{padding:10px 12px;border:1px solid rgba(255,255,255,.18);border-radius:14px;background:rgba(20,26,34,.55);font-size:12px;color:var(--muted)}
+    .stat b{color:var(--text)}
+  .card.done{
+  border-color: rgba(255, 215, 0, .45);
+  box-shadow: 0 10px 30px rgba(0,0,0,.25), 0 0 22px rgba(255, 215, 0, .14);
+}
+  .card{ position:relative; }
+.editBtn{
+  position:absolute;
+  top:10px;
+  right:10px;
+  width:36px;height:36px;
+  display:grid;place-items:center;
+  border-radius:12px;
+  border:1px solid rgba(0,0,0,.08);
+  background: rgba(255,255,255,.92);
+  color:#0E1116;
+  cursor:pointer;
+  opacity:0;
+  transform:translateY(-2px);
+  transition:opacity .15s ease, transform .15s ease, box-shadow .2s ease;
+  box-shadow: 0 10px 24px rgba(0,0,0,.25);
+  z-index:3;
+}
+.card:hover .editBtn{ opacity:1; transform:translateY(0); }
+.editBtn:hover{ box-shadow: 0 12px 28px rgba(0,0,0,.30); }
+
+.infoRow{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  justify-content:space-between;
+}
+.badge{
+  font-size:12px;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.18);
+  background:rgba(14,17,22,.35);
+  color:var(--muted);
+  white-space:nowrap;
+}
+  /* status glows */
+.card.status-in_progress{ box-shadow: 0 0 0 1px rgba(120,190,255,.45), 0 0 44px rgba(120,190,255,.28); }
+.card.status-paused{ box-shadow: 0 0 0 1px rgba(255,110,110,.45), 0 0 44px rgba(255,110,110,.28); }
+#editGameTitle{ color:#E3E3E8 !important; }
+#editGameSub{ color:rgba(227,227,232,.75) !important; }
+:root{ --accent:#C832A0; }
+.btn.primary{ background: var(--accent); border-color: rgba(0,0,0,.0); }
+.btn.danger{ background: rgba(255,90,90,.16); border:1px solid rgba(255,90,90,.35); color:#FFD3D3; }
+.btn.danger:hover{ background: rgba(255,90,90,.22); }
+.descBox{ border:1px solid rgba(227,227,232,.12); background: rgba(14,17,22,.35); border-radius:16px; padding:12px; max-height:140px; overflow:auto; color: rgba(227,227,232,.9); line-height:1.35; }
+.editHeroRow{ display:flex; gap:12px; align-items:center; padding:12px 2px 2px; }
+.editCoverWrap{ width:72px; height:40px; border-radius:12px; overflow:hidden; border:1px solid rgba(227,227,232,.12); background:rgba(14,17,22,.35); }
+.editCoverWrap img{ width:100%; height:100%; object-fit:cover; display:block; }
+.editGameTitle{ font-weight:800; font-size:16px; color:#E3E3E8; }
+/* Add-games grid */
+#steamList{ display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:12px; margin-top:12px; }
+@media (max-width: 1200px){ #steamList{ grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 900px){ #steamList{ grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ownedCard{ position:relative; border:1px solid rgba(227,227,232,.10); border-radius:18px; overflow:hidden; background:rgba(14,17,22,.28); }
+.ownedCard img{ width:100%; height:72px; object-fit:cover; display:block; }
+.ownedCard .ownedMeta{ padding:10px; display:flex; gap:10px; align-items:flex-start; }
+.ownedCard .ownedName{ font-weight:700; font-size:13px; line-height:1.2; color: rgba(227,227,232,.95); flex:1; }
+.ownedCard input[type="checkbox"]{ width:18px; height:18px; margin-top:2px; }
+
+  /* Add Games: store search grid cards */
+  #manualAddResults{ grid-auto-rows: 1fr; }
+  .storeCard{
+    cursor:pointer;
+    border-radius:14px;
+    padding:8px;
+    background: rgba(14,17,22,.35);
+    border: 1px solid rgba(227,227,232,.10);
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    min-height: 0;
+  }
+  .storeCard:focus{ outline: 2px solid rgba(var(--accent-rgb),.65); outline-offset: 2px; }
+  .storeCover{
+    width:100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border-radius:10px;
+  }
+  .storeName{
+    font-weight:700;
+    font-size:12px;
+    line-height:1.2;
+  }
+
+  /* Add Games: keep action bar visible */
+  #steamModal .modalFoot{
+    position: sticky;
+    bottom: 0;
+    background: var(--bg);
+    padding: 12px;
+    border-top: 1px solid rgba(255,255,255,.12);
+    z-index: 5;
+  }
+
+  /* Scrollbar (Chromium/Electron + Firefox fallback) */
+  *{ scrollbar-width: thin; scrollbar-color: rgba(var(--accent-rgb),.55) rgba(20,26,34,.55); }
+  ::-webkit-scrollbar{ width: 12px; height: 12px; }
+  ::-webkit-scrollbar-track{ background: rgba(20,26,34,.55); border-radius: 999px; }
+  ::-webkit-scrollbar-thumb{
+    background: rgba(var(--accent-rgb),.45);
+    border: 3px solid rgba(20,26,34,.65);
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover{ background: rgba(var(--accent-rgb),.62); }
+  ::-webkit-scrollbar-corner{ background: rgba(20,26,34,.55); }
+
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="top">
+      <div class="brand">
+        <img class="logo" src="../assets/icon.png" alt="Platinum Path"/>
+        <div>
+          <h1>Platinum Path</h1>
+        </div>
+      </div>
+      <div class="controls">
+        <div class="row" style="gap:10px; align-items:center; flex:1">
+  <input id="q" type="search" placeholder="Buscar… (nombre)" autocomplete="off" style="flex:1"/>
+  <button class="btn" id="filterBtn" type="button">Filtros</button>
+</div>
+        <div class="row" style="gap:8px; align-items:center">
+  <select id="sort">
+          <option value="name-asc">Nombre (A→Z)</option>
+          <option value="name-desc">Nombre (Z→A)</option>
+
+          <option value="hours-desc">Horas (más→menos)</option>
+          <option value="hours-asc">Horas (menos→más)</option>
+
+          <option value="pct-desc">% logros (más→menos)</option>
+          <option value="pct-asc">% logros (menos→más)</option>
+
+          
+          <option value="rating-desc">Puntuación (más→menos)</option>
+          <option value="rating-asc">Puntuación (menos→más)</option>
+<option value="diff-desc">Dificultad (más→menos)</option>
+          <option value="diff-asc">Dificultad (menos→más)</option>
+        </select>
+  <button class="btn" id="sortDirBtn" type="button" title="Invertir orden">↕</button>
+</div>
+<button class="btn" id="settingsBtn">Ajustes</button>
+        <button class="btn primary" id="addFromSteamBtn">Añadir Juegos</button>
+        <button class="btn" id="syncBtn">Sync ahora</button>
+        <button class="btn" id="exportBtn">Exportar</button>
+        <button class="btn" id="importBtn">Importar</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="sticky-shell"><div class="wrap" style="padding-top:10px">
+  <div class="row" id="filtersBar" style="gap:8px; flex-wrap:wrap">
+    <button class="btn" id="fAll" type="button">Todos</button>
+    <button class="btn" id="fInProgress" type="button">En curso</button>
+    <button class="btn" id="fPossible" type="button">Posibles 100%</button>
+    <button class="btn" id="fPaused" type="button">Parados</button>
+    <button class="btn" id="fDone" type="button">Al 100%</button>
+    <button class="btn" id="fTodo" type="button">Pendientes</button>
+    <button class="btn" id="fYear" type="button">Por Año</button>
+    <select id="yearSelect" style="min-width:140px; display:none"></select>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+</div></div>
+<main><div class="grid" id="grid"></div></main>
+
+<dialog id="settingsModal">
+  <form method="dialog" id="settingsForm">
+    <div class="modalHead"><b>Ajustes</b><button class="iconbtn" value="cancel" aria-label="Cerrar">✕</button></div>
+    <div class="modalBody">
+<div class="form">
+        <div class="full">
+          <label>
+            Steam Web API Key (se guarda local)
+            <a class="link" href="#" data-external-url="https://steamcommunity.com/dev/apikey">Click aquí</a>
+          </label>
+          <input id="steamApiKey" type="text" placeholder="Pega tu key aquí"/>
+          <div class="muted" style="margin-top:6px">Necesaria para horas/logros. Tu perfil debe permitir ver juegos/logros.</div>
+        </div>
+        <div class="full">
+          <label>
+            SteamID64
+            <a class="link" href="#" data-external-url="https://steamid.io/">Click aquí</a>
+          </label>
+          <input id="steamId" type="text" placeholder="Ej: 7656119..."/>
+        </div>
+        <div>
+          <label>Idioma</label>
+          <select id="language"><option value="english">English</option><option value="spanish">Español</option></select>
+        </div>
+        <div>
+          <label>Sync cada (min)</label>
+          <input id="syncMinutes" type="text" placeholder="5"/>
+        </div>
+        <div class="full">
+          <label>Color de la interfaz</label>
+          <select id="themeAccent">
+            <option value="#C832A0">Magenta (default)</option>
+            <option value="#3B82F6">Azul</option>
+            <option value="#22C55E">Verde</option>
+            <option value="#F97316">Naranja</option>
+            <option value="#A855F7">Morado</option>
+            <option value="custom">Personalizado (HEX)</option>
+          </select>
+          <input id="themeAccentCustom" type="text" placeholder="#C832A0" style="margin-top:10px; display:none"/>
+          
+          <div class="muted" style="margin-top:12px">Apóyame si te gusta el proyecto &lt;3</div>
+          <div class="row" style="gap:10px; margin-top:12px; align-items:center">
+            <button class="btn primary" id="donateBtn" type="button" data-external-url="https://paypal.me/muertemilfx">Donación</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <div class="modalFoot"><button class="btn" value="cancel">Cancelar</button><button class="btn primary" value="default">Guardar</button></div>
+  </form>
+</dialog>
+
+<dialog id="steamModal">
+  <form method="dialog" id="steamForm">
+    <div class="modalHead"><b>Añadir Juegos</b><button class="iconbtn" value="cancel" aria-label="Cerrar">✕</button></div>
+    <div class="modalBody">
+<div class="row" style="flex-direction:column; gap:10px">
+        <input id="steamSearch" type="search" placeholder="Filtrar por nombre…" autocomplete="off" style="flex:1; min-width: 220px"/>
+        <div class="muted" style="margin-top:10px">¿No aparece (biblioteca compartida)? Añade por nombre o AppID:</div>
+        <div class="row" style="gap:8px; margin-top:8px; align-items:center">
+          <input id="manualAddTerm" type="text" placeholder="Nombre o AppID (ej: Super Meat Boy o 40800)" style="flex:1"/>
+          <button class="btn" id="manualAddSearch" type="button">Buscar</button>
+        </div>
+        <div id="manualAddResults" style="margin-top:10px; display:grid; gap:8px"></div>
+        <button class="btn" id="reloadOwnedBtn" type="button">Recargar lista</button>
+      </div>
+      <div class="row" style="justify-content:space-between; align-items:center; gap:10px; margin-top:12px">
+  <label style="display:flex; align-items:center; gap:8px; cursor:pointer">
+    <input id="selectAllOwned" type="checkbox"/>
+    <span>Seleccionar todo (según búsqueda)</span>
+  </label>
+  <div class="muted" id="selectedCount">0 seleccionados</div>
+</div>
+<div class="muted" style="margin-top:8px">Marca los juegos que quieras añadir. Solo esos se sincronizan.</div>
+      <div id="steamList" style="margin-top:12px; display:grid; gap:10px"></div>
+    </div>
+    <div class="modalFoot"><button class="btn" value="cancel">Cerrar</button><button class="btn primary" id="addCheckedBtn" type="button">Añadir seleccionados</button></div>
+  </form>
+</dialog>
+
+<dialog id="editModal">
+  <form method="dialog" id="editForm">
+    <div class="modalHead"><b>Editar</b><button class="iconbtn" value="cancel" aria-label="Cerrar">✕</button></div>
+    <div class="editHeroRow">
+  <div class="editCoverWrap"><img id="editGameCover" alt="" /></div>
+  <div class="editTitleWrap">
+    <div id="editGameTitle" class="editGameTitle"></div>
+  </div>
+</div>
+<div class="modalBody">
+      
+
+        <div style="flex:1">
+          <div id="editGameTitle" style="font-weight:800; font-size:14px; line-height:1.2"></div>
+          <div class="muted" id="editGameSub" style="font-size:12px; margin-top:4px"></div>
+        </div>
+      </div>
+
+      <input id="editAppid" type="hidden"/>
+      <div class="form">
+        <div class="full">
+          <label>Estado</label>
+          <select id="editStatus">
+            <option value="">Sin estado</option>
+            <option value="in_progress">En curso</option>
+            <option value="possible_100">Posibles 100%</option>
+            <option value="paused">Parados</option>
+          </select>
+        </div>
+
+        <div class="full">
+          <label>Puntuación (1–100)</label>
+          <input id="editRating" type="text" placeholder="Ej: 86"/>
+        </div>
+
+        <div class="full">
+          <label>Dificultad (manual 1–10)</label>
+          <input id="editDifficulty" type="text" placeholder="Ej: 7"/>
+        </div>
+
+        <div class="full">
+          <label>Horas (manual)</label>
+          <input id="editManualHours" type="text" placeholder="Ej: 12.5"/>
+        </div>
+
+        <div class="full">
+          <label>Género principal</label>
+          <input id="editGenrePrimary" list="genreSuggestions" type="text" placeholder="Ej: Plataformas / Roguelike / Deckbuilder"/>
+        </div>
+
+        <div class="full">
+          <label>Género secundario (opcional)</label>
+          <input id="editGenreSecondary" list="genreSuggestions" type="text" placeholder="Ej: Acción / Indie"/>
+        </div>
+
+        <datalist id="genreSuggestions">
+        </datalist>
+
+        <div class="full">
+          <label>Notas</label>
+          <textarea id="editNotes" placeholder="Ej: pendiente DLC…"></textarea>
+        </div>
+      </div>
+
+
+    </div>
+    <div class="modalFoot" style="justify-content:space-between">
+  <button class="btn danger" id="deleteGameBtn" type="button">Eliminar</button>
+  <div style="display:flex; gap:10px">
+    <button class="btn" value="cancel">Cancelar</button>
+    <button class="btn primary" value="default">Guardar</button>
+  </div>
+</div>
+  </form>
+</dialog>
+
+
+<dialog id="filterModal">
+  <form method="dialog" id="filterForm">
+    <div class="modalHead"><b>Filtros</b><button class="iconbtn" value="cancel" aria-label="Cerrar">✕</button></div>
+    <div class="modalBody">
+      <div class="form">
+        <div class="full">
+          <label>Puntuación</label>
+          <div class="grid2">
+            <input id="filterMinScore" type="text" placeholder="Mín (ej: 80)"/>
+            <input id="filterMaxScore" type="text" placeholder="Máx (ej: 95)"/>
+          </div>
+          <label style="display:flex; gap:10px; align-items:center; margin-top:8px">
+            <input id="filterOnlyRated" type="checkbox"/> Solo con puntuación
+          </label>
+        </div>
+
+        <div class="full">
+          <label>Dificultad</label>
+          <div class="chips" id="filterDiffWrap">
+            <label class="chip"><input type="checkbox" id="filterDiff_1_3"/> 1–3 (muy fácil)</label>
+            <label class="chip"><input type="checkbox" id="filterDiff_4_6"/> 4–6 (media)</label>
+            <label class="chip"><input type="checkbox" id="filterDiff_7_8"/> 7–8 (difícil)</label>
+            <label class="chip"><input type="checkbox" id="filterDiff_9_10"/> 9–10 (extrema)</label>
+          </div>
+        </div>
+
+        <div class="full">
+          <label>Horas jugadas</label>
+          <div class="grid2">
+            <input id="filterMinHours" type="text" placeholder="Mín (ej: 5)"/>
+            <input id="filterMaxHours" type="text" placeholder="Máx (ej: 40)"/>
+          </div>
+        </div>
+
+        <div class="full">
+          <label>Progreso de logros</label>
+          <div class="chips" id="filterProgWrap">
+            <label class="chip"><input type="checkbox" id="filterProg_0_25"/> 0–25%</label>
+            <label class="chip"><input type="checkbox" id="filterProg_25_50"/> 25–50%</label>
+            <label class="chip"><input type="checkbox" id="filterProg_50_75"/> 50–75%</label>
+            <label class="chip"><input type="checkbox" id="filterProg_75_99"/> 75–99%</label>
+            <label class="chip"><input type="checkbox" id="filterProg_100"/> 100%</label>
+          </div>
+        </div>
+
+        <div class="full">
+          <label>Géneros</label>
+          <select id="filterGenreSelect">
+            <option value="">Cualquiera</option>
+          </select>
+        </div>
+
+        <div class="full">
+          <label style="display:flex; gap:10px; align-items:center">
+            <input id="filterOnlyNotes" type="checkbox"/> Solo con notas
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="modalFoot">
+      <button class="btn" id="clearFiltersBtn" value="cancel">Limpiar</button>
+      <button class="btn" value="cancel">Cerrar</button>
+      <button class="btn primary" id="applyFiltersBtn" value="default">Aplicar</button>
+    </div>
+  </form>
+</dialog>
+<script src="./renderer.js"></script>
+</body>
+</html>
+
