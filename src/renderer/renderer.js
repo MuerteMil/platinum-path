@@ -37,6 +37,10 @@ const I18N_ES_TO_EN = {
   "Ajustes":"Settings",
   "Añadir Juegos":"Add Games",
   "Sync ahora":"Sync now",
+  "Sincronizando":"Syncing",
+  "Sincronizando...":"Syncing...",
+  "Sincronizando…":"Syncing…",
+  "Click Aquí":"Click Here",
   "Exportar":"Export",
   "Importar":"Import",
   "Todos":"All",
@@ -47,7 +51,9 @@ const I18N_ES_TO_EN = {
   "Pendientes":"Pending",
   "Por Año":"By year",
   "Steam Web API Key (se guarda local)":"Steam Web API Key (stored locally)",
-  "Click aquí":"Click here",
+  "Click aquí":"Click Here",
+  "Clic aquí":"Click Here",
+  "Clic Aquí":"Click Here",
   "Necesaria para horas/logros. Tu perfil debe permitir ver juegos/logros.":"Needed for hours/achievements. Your profile must allow games/achievements visibility.",
   "SteamID64":"SteamID64",
   "Idioma":"Language",
@@ -64,6 +70,7 @@ const I18N_ES_TO_EN = {
   "Cancelar":"Cancel",
   "Guardar":"Save",
   "¿No aparece (biblioteca compartida)? Añade por nombre o AppID:":"Not showing (shared library)? Add by name or AppID:",
+  "Nombre o AppID (ej: Super Meat Boy o 40800)":"Name or AppID (e.g., Super Meat Boy or 40800)",
   "Buscar":"Search",
   "Buscar… (nombre)":"Search… (name)",
   "Filtrar por nombre…":"Filter by name…",
@@ -215,10 +222,24 @@ function applyI18n(){
 
   // Translate safe UI elements by exact match only (prevents touching game titles)
   // Include <b> because modal titles are wrapped in <b> inside .modalHead
-  const candidates = document.querySelectorAll('label,button,option,h1,h2,h3,span,small,p,div,b');
+  const candidates = document.querySelectorAll('label,button,a,option,h1,h2,h3,span,small,p,div,b');
   for(const el of candidates){
-    // Skip elements that contain other elements (avoid mangling complex cards)
-    if(el.children && el.children.length) continue;
+    // If the element contains other elements (e.g. <label><input/> Text</label>),
+    // translate only its text nodes so we don't destroy interactive children.
+    if(el.children && el.children.length){
+      for(const node of Array.from(el.childNodes || [])){
+        if(node.nodeType !== Node.TEXT_NODE) continue;
+        const raw = node.nodeValue || '';
+        const trimmed = raw.trim();
+        if(!trimmed) continue;
+        const next = translateString(trimmed, lang);
+        if(next !== trimmed){
+          node.nodeValue = raw.replace(trimmed, next);
+        }
+      }
+      continue;
+    }
+
     const txt = (el.textContent || '').trim();
     if(!txt) continue;
     const next = translateString(txt, lang);
@@ -422,7 +443,7 @@ function populateGenreSelect(){
   const genres = allGenresFromLibrary();
   const current = filters.genre || '';
   filterGenreSelect.innerHTML = [
-    `<option value="">Cualquiera</option>`,
+    `<option value="">${escapeHtml(translateString('Cualquiera', getUILang()))}</option>`,
     ...genres.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
   ].join('');
   filterGenreSelect.value = genres.includes(current) ? current : '';
@@ -694,6 +715,10 @@ function applyQueryAndSort(){
   if (key === 'diff'){
     list = list.filter(g => g.difficulty != null && String(g.difficulty).trim() !== '');
   }
+  // When sorting by hours, hide games with 0 hours so the first entries are truly the least played.
+  if (key === 'hours'){
+    list = list.filter(g => effectiveHours(g) > 0);
+  }
 
   list.sort((a,b) => {
     if (key === 'name') return (a.name||'').localeCompare(b.name||'', 'es') * mul;
@@ -887,7 +912,7 @@ function renderOwnedList(){
   const list = ownedCache.filter(g => !term || (g.name || '').toLowerCase().includes(term));
   list.sort((a,b)=> (a.name||'').localeCompare((b.name||''), 'es', { sensitivity:'base' }));
 
-  steamList.innerHTML = list.slice(0, 500).map(g => {
+  steamList.innerHTML = list.map(g => {
     const cover = g.coverUrl || `https://cdn.cloudflare.steamstatic.com/steam/apps/${g.appid}/header.jpg`;
     return `
       <div class="ownedCard">
@@ -925,13 +950,13 @@ async function addChecked(){
 
 async function syncNow(){
   if (!syncBtn) return;
-  syncBtn.textContent = 'Sincronizando…';
+  syncBtn.textContent = (getUILang()==='english') ? 'Syncing…' : 'Sincronizando…';
   syncBtn.disabled = true;
   try{
     await window.api.syncNow();
     await refreshLibrary();
   }catch{}
-  syncBtn.textContent = 'Sync ahora';
+  syncBtn.textContent = (getUILang()==='english') ? 'Sync now' : 'Sync ahora';
   syncBtn.disabled = false;
 }
 
@@ -994,7 +1019,7 @@ safeOn($('editForm'), 'submit', async (e) => {
   e.preventDefault();
   // Only save when the user explicitly clicks "Guardar"
   const submitter = e.submitter;
-  if (!submitter || !String(submitter.textContent || '').toLowerCase().includes('guardar')) {
+  if (!submitter || String(submitter.value || '') !== 'default') {
     editModal.close();
     return;
   }

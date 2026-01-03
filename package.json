@@ -1,12 +1,15 @@
 {
   "name": "platinum-path",
-  "version": "0.1.0",
-  "description": "Biblioteca de juegos local con sync Steam (horas/logros) y dificultad estimada por rareza",
-  "main": "src/main.js",
+  "version": "1.1.0",
+  "description": "Local game library with Steam sync (playtime & achievements) and estimated completion difficulty",
+  "author": "MuerteMil",
   "license": "MIT",
+  "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win --x64"
+    "dist": "electron-builder --win --x64",
+    "dist:linux": "electron-builder --linux AppImage",
+    "dist:linux:deb": "electron-builder --linux deb"
   },
   "dependencies": {
     "electron-store": "^8.2.0",
@@ -19,7 +22,6 @@
   "build": {
     "appId": "com.muertemil.platinumpath",
     "productName": "Platinum Path",
-    "icon": "src/assets/icon.png",
     "directories": {
       "output": "dist"
     },
@@ -32,3 +34,4 @@
     }
   }
 }
+
