@@ -222,38 +222,70 @@ function trackChange(appid, apiName, type, oldValue, newValue) {
 
 async function syncGameAchievements(appid) {
   const nowIso = toIso();
-  const schema = await fetchGlobalAchievementSchema(appid).catch(() => []);
-  const player = await steamGet('/ISteamUserStats/GetPlayerAchievements/v1/', { key: getSettings().steamApiKey, steamid: getSettings().steamId, appid, l: getSettings().language || 'english' }).catch(() => ({}));
-  const playerMap = new Map(((player?.playerstats?.achievements) || []).map(a => [a.apiname, a]));
+  const numericAppid = Number(appid);
+  if (!Number.isFinite(numericAppid) || numericAppid <= 0) {
+    console.warn('[achievements] invalid appid for sync:', appid);
+    return [];
+  }
+
+  const settings = getSettings() || {};
+  const steamApiKey = String(settings.steamApiKey || '').trim();
+  const steamId = String(settings.steamId || '').trim();
+  if (!steamApiKey) console.warn('[achievements] missing Steam API key in settings (appid=%s)', numericAppid);
+  if (!steamId) console.warn('[achievements] missing SteamID64 in settings (appid=%s)', numericAppid);
+
+  console.log('[achievements] sync start appid=%s', numericAppid);
+
+  let schema = [];
+  let schemaOk = false;
+  try {
+    schema = await fetchGlobalAchievementSchema(numericAppid);
+    schemaOk = Array.isArray(schema);
+  } catch (err) {
+    console.warn('[achievements] schema fetch failed appid=%s error=%s', numericAppid, err?.message || err);
+  }
+
+  let playerAchievements = [];
+  let playerOk = false;
+  try {
+    const player = await steamGet('/ISteamUserStats/GetPlayerAchievements/v1/', { key: steamApiKey, steamid: steamId, appid: numericAppid, l: settings.language || 'english' });
+    playerAchievements = player?.playerstats?.achievements || [];
+    playerOk = Array.isArray(playerAchievements);
+  } catch (err) {
+    console.warn('[achievements] player achievements fetch failed appid=%s error=%s', numericAppid, err?.message || err);
+  }
+
+  const playerMap = new Map((playerAchievements || []).map(a => [a.apiname, a]));
   const root = getAchievementsMap();
-  const prevGame = root[appid] || {};
+  const prevGame = root[numericAppid] || {};
   const nextGame = { ...prevGame };
   const seen = new Set();
 
-  for (const sch of schema) {
+  for (const sch of (schema || [])) {
     const apiName = sch.apiName;
+    if (!apiName) continue;
     seen.add(apiName);
     const p = playerMap.get(apiName);
     const prev = nextGame[apiName] || {};
-    const unlocked = Number(p?.achieved) === 1;
-    const unlockTimeSec = Number(p?.unlocktime) > 0 ? Number(p.unlocktime) : null;
+    const unlocked = playerOk ? Number(p?.achieved) === 1 : !!prev.unlocked;
+    const unlockTimeSec = playerOk ? (Number(p?.unlocktime) > 0 ? Number(p.unlocktime) : null) : (prev.unlockTimeSec || null);
     const baseName = sanitizeName(apiName);
-    const dir = achievementDir(appid);
+    const dir = achievementDir(numericAppid);
     const localIconPath = path.join(dir, `${baseName}.png`);
     const localGrayPath = path.join(dir, `${baseName}_gray.png`);
     await downloadIconIfMissing(sch.icon, localIconPath);
     await downloadIconIfMissing(sch.icongray, localGrayPath);
     const next = {
-      appId: Number(appid),
+      appId: numericAppid,
       achievementApiName: apiName,
       displayName: sch.displayName || prev.displayName || apiName,
-      description: sch.description || '',
-      hidden: !!sch.hidden,
+      description: sch.description || prev.description || '',
+      hidden: typeof sch.hidden === 'boolean' ? sch.hidden : !!prev.hidden,
       unlocked,
       unlockTimeSec,
       unlockDate: unlockTimeSec ? toIso(unlockTimeSec * 1000) : null,
-      iconUrl: sch.icon || '',
-      iconGrayUrl: sch.icongray || '',
+      iconUrl: sch.icon || prev.iconUrl || '',
+      iconGrayUrl: sch.icongray || prev.iconGrayUrl || '',
       localIconPath: fs.existsSync(localIconPath) ? localIconPath : (prev.localIconPath || ''),
       localGrayIconPath: fs.existsSync(localGrayPath) ? localGrayPath : (prev.localGrayIconPath || ''),
       firstSeenAt: prev.firstSeenAt || nowIso,
@@ -262,22 +294,27 @@ async function syncGameAchievements(appid) {
       existsInCurrentSteamData: true,
       preservedLocalOnly: false
     };
-    const fields = [['displayName','name_changed'],['description','description_changed'],['hidden','hidden_changed'],['iconUrl','icon_changed'],['iconGrayUrl','locked_icon_changed'],['unlocked','unlock_status_changed']];
-    for (const [k,t] of fields) if (prev[k] !== undefined && prev[k] !== next[k]) trackChange(appid, apiName, t, prev[k], next[k]);
-    if (!prev.achievementApiName) trackChange(appid, apiName, 'new_achievement_added', null, next.displayName);
     nextGame[apiName] = next;
   }
 
-  for (const [apiName, old] of Object.entries(nextGame)) {
-    if (seen.has(apiName)) continue;
-    if (!old || typeof old !== 'object') continue;
-    if (old.existsInCurrentSteamData !== false) trackChange(appid, apiName, 'achievement_removed_from_current_data', true, false);
-    nextGame[apiName] = { ...old, lastSyncedAt: nowIso, existsInCurrentSteamData: false, preservedLocalOnly: true };
+  if (schemaOk) {
+    for (const [apiName, old] of Object.entries(nextGame)) {
+      if (seen.has(apiName)) continue;
+      if (!old || typeof old !== 'object') continue;
+      nextGame[apiName] = { ...old, lastSyncedAt: nowIso, existsInCurrentSteamData: false, preservedLocalOnly: true };
+    }
+  } else {
+    console.warn('[achievements] keeping local achievements because schema fetch failed appid=%s', numericAppid);
   }
-  root[appid] = nextGame;
+
+  root[numericAppid] = nextGame;
   setAchievementsMap(root);
-  return Object.values(nextGame);
+  const result = Object.values(nextGame);
+  if (!result.length) console.log('[achievements] no achievements available appid=%s', numericAppid);
+  console.log('[achievements] sync end appid=%s saved=%s schemaOk=%s playerOk=%s', numericAppid, result.length, schemaOk, playerOk);
+  return result;
 }
+
 
 
 async function syncOne(appid) {
@@ -492,6 +529,11 @@ ipcMain.handle('backup:import', async () => {
 });
 
 ipcMain.handle('achievements:byGame', async (_e, appid) => {
+  try {
+    await syncGameAchievements(appid);
+  } catch (err) {
+    console.warn('[achievements] on-open sync failed appid=%s error=%s', appid, err?.message || err);
+  }
   const all = getAchievementsMap();
   const game = all?.[Number(appid)] || {};
   const changes = getAchievementChanges().filter(c => Number(c.appId) === Number(appid));

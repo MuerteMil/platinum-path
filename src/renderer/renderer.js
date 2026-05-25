@@ -640,16 +640,18 @@ function renderAchievementsPanel(){
   if (!achievementsList) return;
   let list = currentGameAchievements.slice();
   const f = achFilter?.value || 'all';
-  const changedSet = new Set(currentGameAchievementChanges.map(c => c.achievementApiName));
   if (f === 'unlocked') list = list.filter(a => a.unlocked);
   if (f === 'locked') list = list.filter(a => !a.unlocked);
   if (f === 'hidden') list = list.filter(a => a.hidden);
   if (f === 'preserved') list = list.filter(a => a.preservedLocalOnly || a.existsInCurrentSteamData === false);
-  if (f === 'changed') list = list.filter(a => changedSet.has(a.achievementApiName));
   if (!list.length) { achievementsList.innerHTML = `<div class="muted">Sin logros locales para este filtro.</div>`; return; }
   achievementsList.innerHTML = list.map(a => {
-    const icon = a.localIconPath ? `file://${a.localIconPath}` : (a.unlocked ? a.iconUrl : (a.localGrayIconPath ? `file://${a.localGrayIconPath}` : a.iconGrayUrl || a.iconUrl || ''));
-    const changes = currentGameAchievementChanges.filter(c => c.achievementApiName === a.achievementApiName).slice(-3);
+    const icon = a.unlocked
+      ? (a.localIconPath ? `file://${a.localIconPath}` : (a.iconUrl || ''))
+      : (a.localGrayIconPath ? `file://${a.localGrayIconPath}` : (a.iconGrayUrl || a.iconUrl || ''));
+    const unlockedText = a.unlocked
+      ? `Desbloqueado: ${escapeHtml(formatDate(a.unlockDate || (a.unlockTimeSec ? (a.unlockTimeSec * 1000) : null)))}`
+      : 'No desbloqueado';
     return `<div class="achRow">
       <img class="achIcon" src="${icon || ''}" alt="" onerror="this.style.display='none'"/>
       <div class="achMeta">
@@ -658,11 +660,8 @@ function renderAchievementsPanel(){
         <div class="achBadges">
           <span class="achBadge">${a.unlocked ? 'Desbloqueado' : 'Bloqueado'}</span>
           ${a.hidden ? '<span class="achBadge">Oculto</span>' : ''}
-          ${a.preservedLocalOnly ? '<span class="achBadge">Preservado local</span>' : ''}
-          ${a.existsInCurrentSteamData === false ? '<span class="achBadge">Falta en Steam actual</span>' : ''}
-          <span class="achBadge">Sync: ${escapeHtml(formatDate(a.lastSyncedAt))}</span>
+          <span class="achBadge">${unlockedText}</span>
         </div>
-        ${changes.length ? `<div class="muted" style="margin-top:4px">Cambios: ${changes.map(c => c.changeType).join(', ')}</div>` : ''}
       </div>
     </div>`;
   }).join('');
