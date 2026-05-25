@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const Store = require('electron-store');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
@@ -14,9 +15,12 @@ const store = new Store({
     settings: { steamApiKey: '', steamId: '', language: 'english', syncMinutes: 5, themeAccent: '#C832A0' },
     selectedAppIds: [],
     games: {},   // appid -> game object
+    achievements: {}, // appid -> { [apiName]: achievementObj }
+    achievementChanges: [], // change history
     lastSync: 0
   }
 });
+ensureStoreShape();
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -69,6 +73,21 @@ function setSelected(appids) {
   store.set('selectedAppIds', Array.from(new Set((appids || []).map(x => Number(x)).filter(Boolean))));
 }
 function getGamesMap() { return store.get('games') || {}; }
+function getAchievementsMap() { return store.get('achievements') || {}; }
+function setAchievementsMap(next) { store.set('achievements', next || {}); }
+function getAchievementChanges() { return store.get('achievementChanges') || []; }
+function pushAchievementChange(change) {
+  const list = getAchievementChanges();
+  list.push(change);
+  if (list.length > 10000) list.splice(0, list.length - 10000);
+  store.set('achievementChanges', list);
+}
+function ensureStoreShape() {
+  const s = store.store || {};
+  if (!s.achievements || typeof s.achievements !== 'object') s.achievements = {};
+  if (!Array.isArray(s.achievementChanges)) s.achievementChanges = [];
+  store.store = s;
+}
 function upsertGame(appid, patch) {
   const games = getGamesMap();
   const prev = games[appid] || {};
@@ -166,6 +185,99 @@ async function fetchPlayerAchievements(appid) {
   return { total: list.length, unlocked, lastUnlockTimeSec };
 }
 
+async function fetchGlobalAchievementSchema(appid) {
+  const { steamApiKey, language } = getSettings();
+  if (!steamApiKey) return [];
+  const data = await steamGet('/ISteamUserStats/GetSchemaForGame/v2/', { key: steamApiKey, appid, l: language || 'english' });
+  const list = data?.game?.availableGameStats?.achievements || [];
+  return list.map(a => ({
+    apiName: a.name || '',
+    displayName: a.displayName || '',
+    description: a.description || '',
+    hidden: Number(a.hidden) === 1,
+    icon: a.icon || '',
+    icongray: a.icongray || ''
+  })).filter(a => a.apiName);
+}
+
+function toIso(ts = Date.now()) { try { return new Date(ts).toISOString(); } catch { return null; } }
+function achievementDir(appid) { return path.join(app.getPath('userData'), 'achievement-icons', String(appid)); }
+function ensureDir(p) { try { fs.mkdirSync(p, { recursive: true }); } catch {} }
+function sanitizeName(name) { return String(name || '').replace(/[^\w.-]/g, '_'); }
+async function downloadIconIfMissing(url, filePath) {
+  if (!url || !filePath) return;
+  try { if (fs.existsSync(filePath) && fs.statSync(filePath).size > 0) return; } catch {}
+  try {
+    const res = await fetch(url, { method: 'GET' });
+    if (!res.ok) return;
+    const buf = Buffer.from(await res.arrayBuffer());
+    ensureDir(path.dirname(filePath));
+    fs.writeFileSync(filePath, buf);
+  } catch {}
+}
+
+function trackChange(appid, apiName, type, oldValue, newValue) {
+  pushAchievementChange({ appId: Number(appid), achievementApiName: apiName, changeType: type, oldValue, newValue, changedAt: toIso() });
+}
+
+async function syncGameAchievements(appid) {
+  const nowIso = toIso();
+  const schema = await fetchGlobalAchievementSchema(appid).catch(() => []);
+  const player = await steamGet('/ISteamUserStats/GetPlayerAchievements/v1/', { key: getSettings().steamApiKey, steamid: getSettings().steamId, appid, l: getSettings().language || 'english' }).catch(() => ({}));
+  const playerMap = new Map(((player?.playerstats?.achievements) || []).map(a => [a.apiname, a]));
+  const root = getAchievementsMap();
+  const prevGame = root[appid] || {};
+  const nextGame = { ...prevGame };
+  const seen = new Set();
+
+  for (const sch of schema) {
+    const apiName = sch.apiName;
+    seen.add(apiName);
+    const p = playerMap.get(apiName);
+    const prev = nextGame[apiName] || {};
+    const unlocked = Number(p?.achieved) === 1;
+    const unlockTimeSec = Number(p?.unlocktime) > 0 ? Number(p.unlocktime) : null;
+    const baseName = sanitizeName(apiName);
+    const dir = achievementDir(appid);
+    const localIconPath = path.join(dir, `${baseName}.png`);
+    const localGrayPath = path.join(dir, `${baseName}_gray.png`);
+    await downloadIconIfMissing(sch.icon, localIconPath);
+    await downloadIconIfMissing(sch.icongray, localGrayPath);
+    const next = {
+      appId: Number(appid),
+      achievementApiName: apiName,
+      displayName: sch.displayName || prev.displayName || apiName,
+      description: sch.description || '',
+      hidden: !!sch.hidden,
+      unlocked,
+      unlockTimeSec,
+      unlockDate: unlockTimeSec ? toIso(unlockTimeSec * 1000) : null,
+      iconUrl: sch.icon || '',
+      iconGrayUrl: sch.icongray || '',
+      localIconPath: fs.existsSync(localIconPath) ? localIconPath : (prev.localIconPath || ''),
+      localGrayIconPath: fs.existsSync(localGrayPath) ? localGrayPath : (prev.localGrayIconPath || ''),
+      firstSeenAt: prev.firstSeenAt || nowIso,
+      lastSeenAt: nowIso,
+      lastSyncedAt: nowIso,
+      existsInCurrentSteamData: true,
+      preservedLocalOnly: false
+    };
+    const fields = [['displayName','name_changed'],['description','description_changed'],['hidden','hidden_changed'],['iconUrl','icon_changed'],['iconGrayUrl','locked_icon_changed'],['unlocked','unlock_status_changed']];
+    for (const [k,t] of fields) if (prev[k] !== undefined && prev[k] !== next[k]) trackChange(appid, apiName, t, prev[k], next[k]);
+    if (!prev.achievementApiName) trackChange(appid, apiName, 'new_achievement_added', null, next.displayName);
+    nextGame[apiName] = next;
+  }
+
+  for (const [apiName, old] of Object.entries(nextGame)) {
+    if (seen.has(apiName)) continue;
+    if (!old || typeof old !== 'object') continue;
+    if (old.existsInCurrentSteamData !== false) trackChange(appid, apiName, 'achievement_removed_from_current_data', true, false);
+    nextGame[apiName] = { ...old, lastSyncedAt: nowIso, existsInCurrentSteamData: false, preservedLocalOnly: true };
+  }
+  root[appid] = nextGame;
+  setAchievementsMap(root);
+  return Object.values(nextGame);
+}
 
 
 async function syncOne(appid) {
@@ -173,6 +285,7 @@ async function syncOne(appid) {
   let ach = { total: 0, unlocked: 0, lastUnlockTimeSec: null };
 
   try { ach = await fetchPlayerAchievements(appid); } catch {}
+  try { await syncGameAchievements(appid); } catch {}
 
   const current = getGamesMap()[appid] || {};
   let completedAtSec = current.completedAtSec || null;
@@ -233,16 +346,26 @@ ipcMain.handle('settings:set', async (e, next) => { setSettings(next); scheduleA
 ipcMain.handle('library:list', async () => {
   const gamesMap = getGamesMap();
   const list = Object.values(gamesMap).sort((a,b)=> (a.name||'').localeCompare(b.name||'', 'es'));
-  return { games: list, lastSync: getLastSync(), selected: getSelected() };
+  return { games: list, lastSync: getLastSync(), selected: getSelected(), achievements: getAchievementsMap() };
 });
 
 ipcMain.handle('steam:ownedGames', async () => {
-  const list = await fetchOwnedGames();
-  return { games: list };
+  try {
+    const list = await fetchOwnedGames();
+    return { ok: true, games: list };
+  } catch (err) {
+    return { ok: false, games: [], error: err?.message || 'No se pudo cargar la biblioteca de Steam' };
+  }
 });
 
 ipcMain.handle('library:addSelected', async (e, appids) => {
-  const owned = await fetchOwnedGames();
+  let owned = [];
+  try {
+    owned = await fetchOwnedGames();
+  } catch {
+    // Allow adding AppIDs manually even when Steam API credentials are missing/invalid.
+    owned = [];
+  }
   const want = new Set((appids || []).map(Number));
   setSelected([...getSelected(), ...want]);
 
@@ -338,7 +461,7 @@ ipcMain.handle('steam:syncNow', async () => {
 });
 
 ipcMain.handle('backup:export', async () => {
-  const payload = { version: 1, exportedAt: new Date().toISOString(), data: store.store };
+  const payload = { version: 2, exportedAt: new Date().toISOString(), data: store.store, achievements: getAchievementsMap(), achievementChanges: getAchievementChanges() };
   const { filePath, canceled } = await dialog.showSaveDialog({
     title: 'Exportar biblioteca',
     defaultPath: `mi-biblioteca-steam_${new Date().toISOString().slice(0,10)}.json`,
@@ -361,6 +484,16 @@ ipcMain.handle('backup:import', async () => {
   const next = json?.data || json;
   if (!next) return { ok: false };
   store.store = next;
+  if (json?.achievements && typeof json.achievements === 'object') store.set('achievements', json.achievements);
+  if (Array.isArray(json?.achievementChanges)) store.set('achievementChanges', json.achievementChanges);
+  ensureStoreShape();
   scheduleAutoSync();
   return { ok: true };
+});
+
+ipcMain.handle('achievements:byGame', async (_e, appid) => {
+  const all = getAchievementsMap();
+  const game = all?.[Number(appid)] || {};
+  const changes = getAchievementChanges().filter(c => Number(c.appId) === Number(appid));
+  return { ok: true, achievements: Object.values(game), changes };
 });

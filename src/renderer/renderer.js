@@ -369,6 +369,8 @@ const deleteGameBtn = document.getElementById('deleteGameBtn');
 const editManualHours = document.getElementById('editManualHours');
 const editGameTitle = document.getElementById('editGameTitle');
 const editGameCover = document.getElementById('editGameCover');
+const achFilter = $('achFilter');
+const achievementsList = $('achievementsList');
 
 const fAll = $('fAll');
 const fInProgress = $('fInProgress');
@@ -382,6 +384,8 @@ const yearSelect = $('yearSelect');
 let library = [];
 let lastSync = 0;
 let ownedCache = [];
+let currentGameAchievements = [];
+let currentGameAchievementChanges = [];
 let selectedToAdd = new Set();
 
 let filterMode = 'all'; // all | in_progress | possible_100 | paused | done | todo | year
@@ -632,6 +636,38 @@ function renderStats(list){
   ].join('');
 }
 
+function renderAchievementsPanel(){
+  if (!achievementsList) return;
+  let list = currentGameAchievements.slice();
+  const f = achFilter?.value || 'all';
+  const changedSet = new Set(currentGameAchievementChanges.map(c => c.achievementApiName));
+  if (f === 'unlocked') list = list.filter(a => a.unlocked);
+  if (f === 'locked') list = list.filter(a => !a.unlocked);
+  if (f === 'hidden') list = list.filter(a => a.hidden);
+  if (f === 'preserved') list = list.filter(a => a.preservedLocalOnly || a.existsInCurrentSteamData === false);
+  if (f === 'changed') list = list.filter(a => changedSet.has(a.achievementApiName));
+  if (!list.length) { achievementsList.innerHTML = `<div class="muted">Sin logros locales para este filtro.</div>`; return; }
+  achievementsList.innerHTML = list.map(a => {
+    const icon = a.localIconPath ? `file://${a.localIconPath}` : (a.unlocked ? a.iconUrl : (a.localGrayIconPath ? `file://${a.localGrayIconPath}` : a.iconGrayUrl || a.iconUrl || ''));
+    const changes = currentGameAchievementChanges.filter(c => c.achievementApiName === a.achievementApiName).slice(-3);
+    return `<div class="achRow">
+      <img class="achIcon" src="${icon || ''}" alt="" onerror="this.style.display='none'"/>
+      <div class="achMeta">
+        <div><b>${escapeHtml(a.displayName || a.achievementApiName)}</b></div>
+        <div class="muted">${escapeHtml(a.description || '')}</div>
+        <div class="achBadges">
+          <span class="achBadge">${a.unlocked ? 'Desbloqueado' : 'Bloqueado'}</span>
+          ${a.hidden ? '<span class="achBadge">Oculto</span>' : ''}
+          ${a.preservedLocalOnly ? '<span class="achBadge">Preservado local</span>' : ''}
+          ${a.existsInCurrentSteamData === false ? '<span class="achBadge">Falta en Steam actual</span>' : ''}
+          <span class="achBadge">Sync: ${escapeHtml(formatDate(a.lastSyncedAt))}</span>
+        </div>
+        ${changes.length ? `<div class="muted" style="margin-top:4px">Cambios: ${changes.map(c => c.changeType).join(', ')}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
 
 function updateYearSelect(){
   if (!yearSelect) return;
@@ -871,7 +907,8 @@ async function runManualSearch(){
     Array.from(manualAddResults.querySelectorAll('[data-manual-add]')).forEach(card => {
       const act = async () => {
         const appid = Number(card.getAttribute('data-manual-add'));
-        await window.api.addSelected([appid]);
+        const added = await window.api.addSelected([appid]);
+        if (!added?.ok) throw new Error(added?.error || 'No se pudo añadir el juego');
         await enrichAppid(appid);
         await refreshLibrary();
         steamModal.close();
@@ -889,6 +926,7 @@ async function loadOwnedGames(){
   steamList.innerHTML = `<div class="muted">Cargando desde Steam…</div>`;
   try{
     const res = await window.api.ownedGames();
+    if (!res?.ok) throw new Error(res?.error || 'No se pudo cargar la biblioteca');
     ownedCache = res.games || [];
     renderOwnedList();
   }catch{
@@ -940,7 +978,8 @@ function renderOwnedList(){
 async function addChecked(){
   const appids = Array.from(selectedToAdd);
   if (!appids.length) return;
-  await window.api.addSelected(appids);
+  const added = await window.api.addSelected(appids);
+  if (!added?.ok) return;
   for (const id of appids.slice(0, 30)) { try{ await enrichAppid(id); }catch{} }
   selectedToAdd = new Set();
   await refreshLibrary();
@@ -998,6 +1037,16 @@ safeOn(grid, 'click', async (e) => {
   }
 
   editModal.showModal();
+  try {
+    const ar = await window.api.achievementsByGame(appid);
+    currentGameAchievements = ar?.achievements || [];
+    currentGameAchievementChanges = ar?.changes || [];
+    renderAchievementsPanel();
+  } catch {
+    currentGameAchievements = [];
+    currentGameAchievementChanges = [];
+    renderAchievementsPanel();
+  }
 
   const needsEnrich = !g.name || String(g.name).trim().length === 0 || /^App\s+\d+$/i.test(String(g.name));
   if (needsEnrich) {
@@ -1095,6 +1144,7 @@ safeOn(addCheckedBtn, 'click', addChecked);
 safeOn(syncBtn, 'click', syncNow);
 safeOn(exportBtn, 'click', async () => { await window.api.exportBackup(); });
 safeOn(importBtn, 'click', async () => { await window.api.importBackup(); await refreshLibrary(); });
+safeOn(achFilter, 'change', renderAchievementsPanel);
 
 safeOn(q, 'input', render);
 safeOn(sort, 'change', render);

@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('api', {
 
   exportBackup: () => ipcRenderer.invoke('backup:export'),
   importBackup: () => ipcRenderer.invoke('backup:import'),
+  achievementsByGame: (appid) => ipcRenderer.invoke('achievements:byGame', appid),
 
   // Open external URLs in the user's default browser.
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),

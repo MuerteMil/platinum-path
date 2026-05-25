@@ -180,6 +180,11 @@
 .ownedCard .ownedMeta{ padding:10px; display:flex; gap:10px; align-items:flex-start; }
 .ownedCard .ownedName{ font-weight:700; font-size:13px; line-height:1.2; color: rgba(227,227,232,.95); flex:1; }
 .ownedCard input[type="checkbox"]{ width:18px; height:18px; margin-top:2px; }
+.achRow{display:flex;gap:10px;align-items:flex-start;padding:8px;border:1px solid rgba(255,255,255,.1);border-radius:12px;background:rgba(14,17,22,.3);margin-bottom:8px}
+.achIcon{width:40px;height:40px;border-radius:8px;object-fit:cover;background:rgba(255,255,255,.08)}
+.achMeta{font-size:12px;line-height:1.25}
+.achBadges{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.achBadge{font-size:11px;padding:2px 8px;border:1px solid rgba(255,255,255,.18);border-radius:999px}
 
   /* Add Games: store search grid cards */
   #manualAddResults{ grid-auto-rows: 1fr; }
@@ -434,6 +439,15 @@
           <label>Notas</label>
           <textarea id="editNotes" placeholder="Ej: pendiente DLC…"></textarea>
         </div>
+        <div class="full">
+          <label>Logros locales preservados</label>
+          <div class="row" style="margin-bottom:8px">
+            <select id="achFilter">
+              <option value="all">Todos</option><option value="unlocked">Desbloqueados</option><option value="locked">Bloqueados</option><option value="hidden">Ocultos</option><option value="preserved">Preservados/Faltantes</option><option value="changed">Con cambios</option>
+            </select>
+          </div>
+          <div id="achievementsList" class="descBox" style="max-height:260px"></div>
+        </div>
       </div>
 
 
@@ -518,4 +532,3 @@
 <script src="./renderer.js"></script>
 </body>
 </html>
-
