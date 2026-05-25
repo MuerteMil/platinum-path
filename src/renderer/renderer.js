@@ -643,7 +643,6 @@ function renderAchievementsPanel(){
   if (f === 'unlocked') list = list.filter(a => a.unlocked);
   if (f === 'locked') list = list.filter(a => !a.unlocked);
   if (f === 'hidden') list = list.filter(a => a.hidden);
-  if (f === 'preserved') list = list.filter(a => a.preservedLocalOnly || a.existsInCurrentSteamData === false);
   if (!list.length) { achievementsList.innerHTML = `<div class="muted">Sin logros locales para este filtro.</div>`; return; }
   achievementsList.innerHTML = list.map(a => {
     const icon = a.unlocked
@@ -658,8 +657,8 @@ function renderAchievementsPanel(){
         <div><b>${escapeHtml(a.displayName || a.achievementApiName)}</b></div>
         <div class="muted">${escapeHtml(a.description || '')}</div>
         <div class="achBadges">
-          <span class="achBadge">${a.unlocked ? 'Desbloqueado' : 'Bloqueado'}</span>
-          ${a.hidden ? '<span class="achBadge">Oculto</span>' : ''}
+          <span class="achBadge ${a.unlocked ? 'achBadgeUnlocked' : 'achBadgeLocked'}">${a.unlocked ? 'Desbloqueado' : 'Bloqueado'}</span>
+          ${a.hidden ? '<span class="achBadge achBadgeHidden">Oculto</span>' : ''}
           <span class="achBadge">${unlockedText}</span>
         </div>
       </div>

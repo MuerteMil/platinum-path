@@ -101,7 +101,8 @@
     .footer{padding:10px 12px 12px;display:flex;gap:8px;justify-content:space-between;align-items:center;border-top:1px solid var(--border)}
     .mini{display:flex;gap:8px}
     .iconbtn{width:38px;height:38px;display:grid;place-items:center;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:rgba(14,17,22,.35);cursor:pointer}
-    dialog{width:min(820px, calc(100vw - 24px));border:1px solid rgba(227,227,232,.18);border-radius:18px;background:rgba(20,26,34,.95);color:var(--text);box-shadow:var(--shadow);padding:0}
+    dialog{width:min(900px, calc(100vw - 24px));border:1px solid rgba(227,227,232,.18);border-radius:18px;background:rgba(20,26,34,.95);color:var(--text);box-shadow:var(--shadow);padding:0}
+    #editModal{width:min(1200px, calc(100vw - 24px));}
     dialog::backdrop{background:rgba(0,0,0,.6)}
     .modalHead{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
     .modalHead b{font-size:14px}
@@ -171,7 +172,7 @@
 .editCoverWrap{ width:72px; height:40px; border-radius:12px; overflow:hidden; border:1px solid rgba(227,227,232,.12); background:rgba(14,17,22,.35); }
 .editCoverWrap img{ width:100%; height:100%; object-fit:cover; display:block; }
 .editGameTitle{ font-weight:800; font-size:16px; color:#E3E3E8; }
-.editSplit{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,360px);gap:14px;align-items:start}.editLeftPane{min-width:0}.editRightPane{border:1px solid rgba(227,227,232,.12);border-radius:14px;padding:10px;background:rgba(14,17,22,.35)}@media (max-width:980px){.editSplit{grid-template-columns:1fr}}
+.editSplit{display:grid;grid-template-columns:minmax(0,1fr) minmax(380px,460px);gap:20px;align-items:start}.editLeftPane{min-width:0}.editRightPane{justify-self:end;width:100%;max-width:460px;border:1px solid rgba(227,227,232,.12);border-radius:14px;padding:12px;background:rgba(14,17,22,.35)}@media (max-width:1180px){.editSplit{grid-template-columns:minmax(0,1fr) minmax(320px,420px);gap:16px}}@media (max-width:980px){.editSplit{grid-template-columns:1fr}.editRightPane{justify-self:stretch;max-width:none}}
 /* Add-games grid */
 #steamList{ display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:12px; margin-top:12px; }
 @media (max-width: 1200px){ #steamList{ grid-template-columns: repeat(3, minmax(0, 1fr)); } }
@@ -186,6 +187,9 @@
 .achMeta{font-size:12px;line-height:1.25}
 .achBadges{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
 .achBadge{font-size:11px;padding:2px 8px;border:1px solid rgba(255,255,255,.18);border-radius:999px}
+.achBadgeUnlocked{background:rgba(58,184,102,.18);border-color:rgba(58,184,102,.55);color:#BDF5CE}
+.achBadgeLocked{background:rgba(180,58,58,.18);border-color:rgba(180,58,58,.55);color:#FFD0D0}
+.achBadgeHidden{background:rgba(168,95,255,.2);border-color:rgba(168,95,255,.55);color:#E9D8FF}
 
   /* Add Games: store search grid cards */
   #manualAddResults{ grid-auto-rows: 1fr; }
@@ -404,7 +408,7 @@
       </div>
       <div class="editRightPane">
         <label>Logros</label>
-        <div class="row" style="margin-bottom:8px"><select id="achFilter"><option value="all">Todos</option><option value="unlocked">Desbloqueados</option><option value="locked">Bloqueados</option><option value="hidden">Ocultos</option><option value="preserved">Preservados/Faltantes</option></select></div>
+        <div class="row" style="margin-bottom:8px"><select id="achFilter"><option value="all">Todos</option><option value="unlocked">Desbloqueados</option><option value="locked">Bloqueados</option><option value="hidden">Ocultos</option></select></div>
         <div id="achievementsList" class="descBox" style="max-height:320px"></div>
       </div>
     </div>
