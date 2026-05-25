@@ -638,27 +638,39 @@ function renderStats(list){
 
 function renderAchievementsPanel(){
   if (!achievementsList) return;
+  const lang = getUILang();
+  const t = (es, en) => (lang === 'english') ? en : es;
+  if (achFilter){
+    const currentFilter = achFilter.value || 'all';
+    achFilter.innerHTML = [
+      `<option value="all">${t('Todos', 'All')}</option>`,
+      `<option value="unlocked">${t('Desbloqueados', 'Unlocked')}</option>`,
+      `<option value="locked">${t('Bloqueados', 'Locked')}</option>`,
+      `<option value="hidden">${t('Ocultos', 'Hidden')}</option>`
+    ].join('');
+    achFilter.value = currentFilter;
+  }
   let list = currentGameAchievements.slice();
   const f = achFilter?.value || 'all';
   if (f === 'unlocked') list = list.filter(a => a.unlocked);
   if (f === 'locked') list = list.filter(a => !a.unlocked);
   if (f === 'hidden') list = list.filter(a => a.hidden);
-  if (!list.length) { achievementsList.innerHTML = `<div class="muted">Sin logros locales para este filtro.</div>`; return; }
+  if (!list.length) { achievementsList.innerHTML = `<div class="muted">${t('Sin logros locales para este filtro.', 'No local achievements for this filter.')}</div>`; return; }
   achievementsList.innerHTML = list.map(a => {
     const icon = a.unlocked
       ? (a.localIconPath ? `file://${a.localIconPath}` : (a.iconUrl || ''))
       : (a.localGrayIconPath ? `file://${a.localGrayIconPath}` : (a.iconGrayUrl || a.iconUrl || ''));
     const unlockedText = a.unlocked
-      ? `Desbloqueado: ${escapeHtml(formatDate(a.unlockDate || (a.unlockTimeSec ? (a.unlockTimeSec * 1000) : null)))}`
-      : 'No desbloqueado';
+      ? `${t('Desbloqueado', 'Unlocked')}: ${escapeHtml(formatDate(a.unlockDate || (a.unlockTimeSec ? (a.unlockTimeSec * 1000) : null)))}`
+      : t('Bloqueado', 'Locked');
     return `<div class="achRow">
       <img class="achIcon" src="${icon || ''}" alt="" onerror="this.style.display='none'"/>
       <div class="achMeta">
-        <div><b>${escapeHtml(a.displayName || a.achievementApiName)}</b></div>
-        <div class="muted">${escapeHtml(a.description || '')}</div>
+        <div class="achName"><b>${escapeHtml(a.displayName || a.achievementApiName)}</b></div>
+        <div class="muted achDesc">${escapeHtml(a.description || '')}</div>
         <div class="achBadges">
-          <span class="achBadge ${a.unlocked ? 'achBadgeUnlocked' : 'achBadgeLocked'}">${a.unlocked ? 'Desbloqueado' : 'Bloqueado'}</span>
-          ${a.hidden ? '<span class="achBadge achBadgeHidden">Oculto</span>' : ''}
+          <span class="achBadge ${a.unlocked ? 'achBadgeUnlocked' : 'achBadgeLocked'}">${a.unlocked ? t('Desbloqueado', 'Unlocked') : t('Bloqueado', 'Locked')}</span>
+          ${a.hidden ? `<span class="achBadge achBadgeHidden">${t('Oculto', 'Hidden')}</span>` : ''}
           <span class="achBadge">${unlockedText}</span>
         </div>
       </div>

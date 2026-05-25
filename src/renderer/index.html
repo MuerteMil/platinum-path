@@ -172,7 +172,7 @@
 .editCoverWrap{ width:72px; height:40px; border-radius:12px; overflow:hidden; border:1px solid rgba(227,227,232,.12); background:rgba(14,17,22,.35); }
 .editCoverWrap img{ width:100%; height:100%; object-fit:cover; display:block; }
 .editGameTitle{ font-weight:800; font-size:16px; color:#E3E3E8; }
-.editSplit{display:grid;grid-template-columns:minmax(0,1fr) minmax(380px,460px);gap:20px;align-items:start}.editLeftPane{min-width:0}.editRightPane{justify-self:end;width:100%;max-width:460px;border:1px solid rgba(227,227,232,.12);border-radius:14px;padding:12px;background:rgba(14,17,22,.35)}@media (max-width:1180px){.editSplit{grid-template-columns:minmax(0,1fr) minmax(320px,420px);gap:16px}}@media (max-width:980px){.editSplit{grid-template-columns:1fr}.editRightPane{justify-self:stretch;max-width:none}}
+.editSplit{display:grid;grid-template-columns:minmax(0,1fr) minmax(460px,620px);gap:24px;align-items:start}.editLeftPane{min-width:0}.editRightPane{justify-self:end;width:100%;max-width:620px;border:1px solid rgba(227,227,232,.12);border-radius:14px;padding:14px;background:rgba(14,17,22,.35)}@media (max-width:1320px){.editSplit{grid-template-columns:minmax(0,1fr) minmax(400px,520px);gap:18px}}@media (max-width:980px){.editSplit{grid-template-columns:1fr}.editRightPane{justify-self:stretch;max-width:none}}
 /* Add-games grid */
 #steamList{ display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:12px; margin-top:12px; }
 @media (max-width: 1200px){ #steamList{ grid-template-columns: repeat(3, minmax(0, 1fr)); } }
@@ -182,14 +182,16 @@
 .ownedCard .ownedMeta{ padding:10px; display:flex; gap:10px; align-items:flex-start; }
 .ownedCard .ownedName{ font-weight:700; font-size:13px; line-height:1.2; color: rgba(227,227,232,.95); flex:1; }
 .ownedCard input[type="checkbox"]{ width:18px; height:18px; margin-top:2px; }
-.achRow{display:flex;gap:10px;align-items:flex-start;padding:8px;border:1px solid rgba(255,255,255,.1);border-radius:12px;background:rgba(14,17,22,.3);margin-bottom:8px}
-.achIcon{width:40px;height:40px;border-radius:8px;object-fit:cover;background:rgba(255,255,255,.08)}
-.achMeta{font-size:12px;line-height:1.25}
-.achBadges{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
-.achBadge{font-size:11px;padding:2px 8px;border:1px solid rgba(255,255,255,.18);border-radius:999px}
+.achRow{display:flex;gap:14px;align-items:flex-start;padding:14px;border:1px solid rgba(255,255,255,.12);border-radius:14px;background:rgba(14,17,22,.36);margin-bottom:12px}
+.achIcon{width:56px;height:56px;border-radius:10px;object-fit:cover;background:rgba(255,255,255,.08)}
+.achMeta{font-size:14px;line-height:1.4}
+.achName{font-size:16px;line-height:1.3}
+.achDesc{font-size:13px;line-height:1.4;margin-top:2px}
+.achBadges{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.achBadge{font-size:12px;padding:4px 10px;border:1px solid rgba(255,255,255,.2);border-radius:999px}
 .achBadgeUnlocked{background:rgba(58,184,102,.18);border-color:rgba(58,184,102,.55);color:#BDF5CE}
 .achBadgeLocked{background:rgba(180,58,58,.18);border-color:rgba(180,58,58,.55);color:#FFD0D0}
-.achBadgeHidden{background:rgba(168,95,255,.2);border-color:rgba(168,95,255,.55);color:#E9D8FF}
+.achBadgeHidden{background:rgba(209,166,58,.2);border-color:rgba(209,166,58,.55);color:#FFE9A8}
 
   /* Add Games: store search grid cards */
   #manualAddResults{ grid-auto-rows: 1fr; }
@@ -408,8 +410,8 @@
       </div>
       <div class="editRightPane">
         <label>Logros</label>
-        <div class="row" style="margin-bottom:8px"><select id="achFilter"><option value="all">Todos</option><option value="unlocked">Desbloqueados</option><option value="locked">Bloqueados</option><option value="hidden">Ocultos</option></select></div>
-        <div id="achievementsList" class="descBox" style="max-height:320px"></div>
+        <div class="row" style="margin-bottom:10px"><select id="achFilter"><option value="all">Todos</option><option value="unlocked">Desbloqueados</option><option value="locked">Bloqueados</option><option value="hidden">Ocultos</option></select></div>
+        <div id="achievementsList" class="descBox" style="max-height:460px"></div>
       </div>
     </div>
     <div class="modalFoot" style="justify-content:space-between">
