@@ -386,6 +386,7 @@ let lastSync = 0;
 let ownedCache = [];
 let currentGameAchievements = [];
 let currentGameAchievementChanges = [];
+let currentAchievementAppid = null;
 let selectedToAdd = new Set();
 
 let filterMode = 'all'; // all | in_progress | possible_100 | paused | done | todo | year
@@ -671,7 +672,7 @@ function renderAchievementsPanel(){
         <div class="achBadges">
           <span class="achBadge ${a.unlocked ? 'achBadgeUnlocked' : 'achBadgeLocked'}">${a.unlocked ? t('Desbloqueado', 'Unlocked') : t('Bloqueado', 'Locked')}</span>
           ${a.hidden ? `<span class="achBadge achBadgeHidden">${t('Oculto', 'Hidden')}</span>` : ''}
-          <span class="achBadge">${unlockedText}</span>
+          <span class="achBadge muted">${unlockedText}</span>
         </div>
       </div>
     </div>`;
@@ -1047,6 +1048,8 @@ safeOn(grid, 'click', async (e) => {
   }
 
   editModal.showModal();
+  if (achFilter && currentAchievementAppid !== appid) achFilter.value = 'all';
+  currentAchievementAppid = appid;
   try {
     const ar = await window.api.achievementsByGame(appid);
     currentGameAchievements = ar?.achievements || [];
