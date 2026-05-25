@@ -389,15 +389,15 @@
 <dialog id="editModal">
   <form method="dialog" id="editForm">
     <div class="modalHead"><b>Editar</b><button class="iconbtn" value="cancel" aria-label="Cerrar">✕</button></div>
-    <div class="editHeroRow">
-      <div class="editCoverWrap"><img id="editGameCover" alt="" /></div>
-      <div class="editTitleWrap">
-        <div id="editGameTitle" class="editGameTitle"></div>
-        <div class="muted" id="editGameSub" style="font-size:12px; margin-top:4px"></div>
-      </div>
-    </div>
     <div class="modalBody editSplit">
       <div class="editLeftPane">
+        <div class="editHeroRow">
+          <div class="editCoverWrap"><img id="editGameCover" alt="" /></div>
+          <div class="editTitleWrap">
+            <div id="editGameTitle" class="editGameTitle"></div>
+            <div class="muted" id="editGameSub" style="font-size:12px; margin-top:4px"></div>
+          </div>
+        </div>
         <input id="editAppid" type="hidden"/>
         <div class="form">
           <div class="full"><label>Estado</label><select id="editStatus"><option value="">Sin estado</option><option value="in_progress">En curso</option><option value="possible_100">Posibles 100%</option><option value="paused">Parados</option></select></div>
