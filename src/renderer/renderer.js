@@ -388,6 +388,7 @@ let currentGameAchievements = [];
 let currentGameAchievementChanges = [];
 let currentAchievementAppid = null;
 let selectedToAdd = new Set();
+let bodyOverflowBeforeEditModal = '';
 
 let filterMode = 'all'; // all | in_progress | possible_100 | paused | done | todo | year
 let selectedYear = null;
@@ -1047,6 +1048,8 @@ safeOn(grid, 'click', async (e) => {
     
   }
 
+  bodyOverflowBeforeEditModal = document.body.style.overflow || '';
+  document.body.style.overflow = 'hidden';
   editModal.showModal();
   if (achFilter && currentAchievementAppid !== appid) achFilter.value = 'all';
   currentAchievementAppid = appid;
@@ -1111,6 +1114,10 @@ safeOn($('editForm'), 'submit', async (e) => {
 
   editModal.close();;
   await refreshLibrary();
+});
+
+safeOn(editModal, 'close', () => {
+  document.body.style.overflow = bodyOverflowBeforeEditModal;
 });
 
 
