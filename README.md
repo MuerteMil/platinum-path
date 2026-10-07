@@ -102,6 +102,8 @@ npm run dist       # build installer + portable ZIP into dist/
 npm run release    # build and publish to GitHub Releases (needs GH_TOKEN)
 ```
 
+On Windows you can also double-click **Run app.bat** (installs dependencies the first time and starts the app) or **Build installer.bat** (creates the installer and portable ZIP in `dist/`).
+
 Test against a simulated Steam API (no key needed):
 
 ```bash
