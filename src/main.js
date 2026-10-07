@@ -1,541 +1,476 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
+'use strict';
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell, safeStorage, screen, Notification, Tray, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const Store = require('electron-store');
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
-// Helps Windows correctly associate taskbar/window icons with the app.
-if (process.platform === 'win32') {
-  app.setAppUserModelId('com.muertemil.platinumpath');
+const data = require('./main/data');
+const steam = require('./main/steam');
+const sync = require('./main/sync');
+const enrich = require('./main/enrich');
+const updater = require('./main/updater');
+const hltb = require('./main/hltb');
+const nowPlaying = require('./main/nowPlaying');
+const showcase = require('./main/showcase');
+const recap = require('./main/recap');
+
+const START_HIDDEN = process.argv.includes('--hidden');
+let tray = null;
+let quitting = false;
+
+if (process.platform === 'win32') app.setAppUserModelId('com.muertemil.platinumpath');
+
+// Development-only hooks (ignored in the packaged app): isolated data folder and simulated Steam API.
+if (!app.isPackaged && process.env.PP_USER_DATA) app.setPath('userData', process.env.PP_USER_DATA);
+const devMock = !app.isPackaged && process.env.PP_MOCK_STEAM ? require(path.resolve(process.env.PP_MOCK_STEAM)) : null;
+
+// Two instances writing the same JSON files would corrupt data.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => showWindow());
 }
 
-const store = new Store({
-  name: 'library',
-  defaults: {
-    settings: { steamApiKey: '', steamId: '', language: 'english', syncMinutes: 5, themeAccent: '#C832A0' },
-    selectedAppIds: [],
-    games: {},   // appid -> game object
-    achievements: {}, // appid -> { [apiName]: achievementObj }
-    achievementChanges: [], // change history
-    lastSync: 0
-  }
-});
-ensureStoreShape();
+let win = null;
 
-function createWindow() {
-  const win = new BrowserWindow({
-    width: 1200,
-    height: 820,
+function showWindow() {
+  if (!win || win.isDestroyed()) { createWindow(true); return; }
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+// ---------- helpers ----------
+function send(channel, payload) {
+  if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+}
+
+const NOTIF_TEXT = {
+  english: {
+    unlocked: (n, g) => [`🏆 ${n} new achievement${n === 1 ? '' : 's'}`, g],
+    completed: (g) => ['💎 100% completed!', g],
+    newAch: (g) => ['⚠️ New achievements added', `${g} is no longer at 100%`]
+  },
+  spanish: {
+    unlocked: (n, g) => [`🏆 ${n} logro${n === 1 ? '' : 's'} nuevo${n === 1 ? '' : 's'}`, g],
+    completed: (g) => ['💎 ¡100% completado!', g],
+    newAch: (g) => ['⚠️ Logros nuevos añadidos', `${g} ya no está al 100%`]
+  }
+};
+
+function notify({ kind, body, count }) {
+  const s = data.getSettings();
+  if (!s.notifications || !Notification.isSupported()) return;
+  const T = NOTIF_TEXT[s.language] || NOTIF_TEXT.english;
+  let title, text;
+  if (kind === 'unlocked') [title, text] = T.unlocked(count || 1, body);
+  else if (kind === 'completed') [title, text] = T.completed(body);
+  else if (kind === 'newAch') [title, text] = T.newAch(body);
+  else return;
+  try {
+    const n = new Notification({ title, body: text, icon: path.join(__dirname, 'assets', 'icon.png'), silent: false });
+    n.on('click', () => showWindow());
+    n.show();
+  } catch {}
+}
+
+// ---------- window ----------
+function restoreBounds() {
+  const ws = data.getWindowState();
+  const def = { width: 1280, height: 860 };
+  if (!ws || !ws.bounds) return { ...def, maximized: false };
+  const b = ws.bounds;
+  const visible = screen.getAllDisplays().some(d => {
+    const a = d.workArea;
+    return b.x < a.x + a.width - 50 && b.x + b.width > a.x + 50 && b.y < a.y + a.height - 50 && b.y + 50 > a.y;
+  });
+  return visible ? { ...b, maximized: !!ws.maximized } : { ...def, maximized: !!ws.maximized };
+}
+
+function createWindow(forceShow = false) {
+  const { maximized, ...bounds } = restoreBounds();
+  win = new BrowserWindow({
+    ...bounds,
+    minWidth: 900,
+    minHeight: 600,
+    show: false,
     backgroundColor: '#0e1116',
-    // Prefer .ico on Windows so the icon shows in the title bar and taskbar.
     icon: path.join(__dirname, 'assets', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: true
     }
   });
+  if (maximized) win.maximize();
+  win.once('ready-to-show', () => { if (forceShow || !START_HIDDEN) win.show(); });
+
+  const saveState = () => {
+    if (!win || win.isDestroyed()) return;
+    data.setWindowState({ bounds: win.isMaximized() ? (data.getWindowState() || {}).bounds || win.getBounds() : win.getBounds(), maximized: win.isMaximized() });
+  };
+  win.on('resize', debounce(saveState, 500));
+  win.on('move', debounce(saveState, 500));
+  win.on('close', (e) => {
+    saveState();
+    // Keep running in the tray so sync + notifications continue.
+    if (!quitting && tray && data.getSettings().closeToTray) {
+      e.preventDefault();
+      win.hide();
+      trayHint();
+    }
+  });
+
+  // Never navigate away from the app; external links open in the browser.
+  win.webContents.setWindowOpenHandler(({ url }) => { openExternalSafe(url); return { action: 'deny' }; });
+  win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file://')) { e.preventDefault(); openExternalSafe(url); } });
+
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 
+function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+function openExternalSafe(url) {
+  if (typeof url !== 'string') return false;
+  const u = url.trim();
+  const ok = /^https?:\/\//i.test(u) || /^steam:\/\/(run|rungameid|store|nav\/games\/details)\/\d+$/i.test(u);
+  if (!ok) return false;
+  shell.openExternal(u).catch(() => {});
+  return true;
+}
+
+// ---------- tray ----------
+const TRAY_TEXT = {
+  spanish: { open: 'Abrir Platinum Path', sync: 'Sincronizar ahora', quit: 'Salir', hint: 'Platinum Path sigue en la bandeja del sistema. Puedes cambiarlo en Ajustes.' },
+  english: { open: 'Open Platinum Path', sync: 'Sync now', quit: 'Quit', hint: 'Platinum Path keeps running in the system tray. You can change this in Settings.' }
+};
+function trayText() { return TRAY_TEXT[data.getSettings().language] || TRAY_TEXT.english; }
+
+function createTray() {
+  if (tray) return;
+  try {
+    const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png'));
+    tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon.resize({ width: 16, height: 16 }));
+    tray.setToolTip('Platinum Path');
+    tray.on('click', showWindow);
+    updateTrayMenu();
+  } catch (err) {
+    tray = null; // no tray available: closing the window quits normally
+  }
+}
+function updateTrayMenu() {
+  if (!tray) return;
+  const T = trayText();
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: T.open, click: showWindow },
+    { label: T.sync, click: () => sync.syncAll({ force: true, reason: 'tray' }).catch(() => {}) },
+    { type: 'separator' },
+    { label: T.quit, click: () => { quitting = true; app.quit(); } }
+  ]));
+}
+let hintShown = false;
+function trayHint() {
+  if (hintShown) return;
+  hintShown = true;
+  try { if (Notification.isSupported()) new Notification({ title: 'Platinum Path', body: trayText().hint, silent: true }).show(); } catch {}
+}
+
+function applyLoginItem() {
+  if (process.platform !== 'win32' && process.platform !== 'darwin') return;
+  if (!app.isPackaged) return;
+  try { app.setLoginItemSettings({ openAtLogin: !!data.getSettings().startWithWindows, args: ['--hidden'] }); } catch {}
+}
+
+// ---------- lifecycle ----------
 app.whenReady().then(() => {
-  // Remove the native menu bar (File/Edit/View/Window/Help) permanently.
-  // Keeps the normal window frame controls (min/max/close).
+  if (!gotLock) return;
   Menu.setApplicationMenu(null);
+  data.init({ userData: app.getPath('userData'), safeStorage, locale: app.getLocale() });
+  if (devMock) devMock.install({ steam, app });
+  sync.configure({ emitter: send, notifier: notify });
+  enrich.configure({ changed: (ids) => send('library:changed', { appids: ids }) });
+  updater.init({ emitter: send });
+  nowPlaying.configure({ emitter: send });
   createWindow();
-  scheduleAutoSync();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+  createTray();
+  applyLoginItem();
+  nowPlaying.start();
+  if (devMock && devMock.afterWindow) devMock.afterWindow({ win, app });
+  sync.schedule();
+  // Fill any missing names/genres from the store in the background.
+  enrich.enqueue(data.getSelected());
+  // First sync shortly after start (only games that changed).
+  setTimeout(() => sync.syncAll({ reason: 'startup' }).catch(() => {}), 4000);
+
+  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
-// Open external links in the user's default browser.
-ipcMain.handle('shell:openExternal', async (_evt, url) => {
-  try {
-    if (typeof url !== 'string') return { ok: false };
-    const u = url.trim();
-    if (!/^https?:\/\//i.test(u)) return { ok: false };
-    await shell.openExternal(u);
-    return { ok: true };
-  } catch {
-    return { ok: false };
+app.on('before-quit', () => { quitting = true; if (gotLock) { sync.stop(); nowPlaying.stop(); data.flushAll(); } });
+app.on('window-all-closed', () => { if (gotLock) data.flushAll(); if (process.platform !== 'darwin') app.quit(); });
+
+// ---------- IPC ----------
+const handle = (ch, fn) => ipcMain.handle(ch, async (_e, ...args) => {
+  try { return await fn(...args); } catch (err) {
+    console.error('[ipc] %s failed:', ch, err);
+    return { ok: false, error: (err && err.kind) || 'unexpected', message: err && err.message };
   }
 });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
+handle('app:info', () => ({ version: app.getVersion(), encryption: data.canEncrypt(), update: updater.getState() }));
+handle('app:openDataFolder', () => shell.openPath(app.getPath('userData')).then(() => ({ ok: true })));
+handle('shell:openExternal', (url) => ({ ok: openExternalSafe(url) }));
 
-function getSettings() { return store.get('settings'); }
-function setSettings(next) { store.set('settings', { ...getSettings(), ...(next || {}) }); }
-function getSelected() { return store.get('selectedAppIds') || []; }
-function setSelected(appids) {
-  store.set('selectedAppIds', Array.from(new Set((appids || []).map(x => Number(x)).filter(Boolean))));
-}
-function getGamesMap() { return store.get('games') || {}; }
-function getAchievementsMap() { return store.get('achievements') || {}; }
-function setAchievementsMap(next) { store.set('achievements', next || {}); }
-function getAchievementChanges() { return store.get('achievementChanges') || []; }
-function pushAchievementChange(change) {
-  const list = getAchievementChanges();
-  list.push(change);
-  if (list.length > 10000) list.splice(0, list.length - 10000);
-  store.set('achievementChanges', list);
-}
-function ensureStoreShape() {
-  const s = store.store || {};
-  if (!s.achievements || typeof s.achievements !== 'object') s.achievements = {};
-  if (!Array.isArray(s.achievementChanges)) s.achievementChanges = [];
-  store.store = s;
-}
-function upsertGame(appid, patch) {
-  const games = getGamesMap();
-  const prev = games[appid] || {};
-  games[appid] = { ...prev, ...patch, appid: Number(appid) };
-  store.set('games', games);
-  return games[appid];
-}
-function setLastSync(ts) { store.set('lastSync', ts); }
-function getLastSync() { return store.get('lastSync') || 0; }
-
-function minutesToMs(m) { return Math.max(1, Number(m) || 5) * 60_000; }
-let syncTimer = null;
-function scheduleAutoSync() {
-  if (syncTimer) clearInterval(syncTimer);
-  const { syncMinutes } = getSettings();
-  syncTimer = setInterval(() => { syncSelected().catch(() => {}); }, minutesToMs(syncMinutes));
-}
-
-// --- Steam API helpers ---
-const STEAM_BASE = 'https://api.steampowered.com';
-
-async function steamGet(pathname, params) {
-  const url = new URL(STEAM_BASE + pathname);
-  Object.entries(params).forEach(([k,v]) => url.searchParams.set(k, String(v)));
-  const res = await fetch(url.toString(), { method: 'GET' });
-  if (!res.ok) throw new Error(`Steam API error ${res.status}`);
-  return await res.json();
-}
-
-function iconUrl(appid, hash) {
-  if (hash) return `https://media.steampowered.com/steamcommunity/public/images/apps/${appid}/${hash}.jpg`;
-  return '';
-}
-function headerUrl(appid) {
-  return `https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/header.jpg`;
-}
-
-async function fetchStoreGenres(appid) {
-  // Stable fallback: Steam Store appdetails genres.
-  // Steam does not reliably expose user-defined tags (e.g. "Precision Platformer") via a stable public API.
-  try{
-    const url = `https://store.steampowered.com/api/appdetails?appids=${appid}&l=english`;
-    const res = await fetch(url, { method: 'GET' });
-    if (!res.ok) return [];
-    const json = await res.json();
-    const data = json?.[String(appid)]?.data;
-
-    const genres = (data?.genres || []).map(g => g.description).filter(Boolean);
-    const ordered = genres.filter(g => g !== 'Indie').concat(genres.filter(g => g === 'Indie'));
-    return ordered.slice(0, 2);
-  }catch{
-    return [];
+handle('settings:get', () => ({ ok: true, settings: data.publicSettings(), lastSync: data.getLastSync() }));
+handle('settings:set', async (next = {}) => {
+  // API key: empty field means "keep current"; clearKey removes it.
+  if (next.clearApiKey) data.setApiKey('');
+  else if (typeof next.steamApiKey === 'string' && next.steamApiKey.trim()) {
+    const k = next.steamApiKey.trim();
+    if (!/^[0-9A-F]{32}$/i.test(k)) return { ok: false, error: 'invalid_key_format' };
+    data.setApiKey(k);
   }
-}
-
-
-
-async function fetchOwnedGames() {
-  const { steamApiKey, steamId, language } = getSettings();
-  if (!steamApiKey || !steamId) throw new Error('Falta API key o steamId');
-  const data = await steamGet('/IPlayerService/GetOwnedGames/v1/', {
-    key: steamApiKey,
-    steamid: steamId,
-    include_appinfo: true,
-    include_played_free_games: true,
-    language: language || 'english'
-  });
-  const list = data?.response?.games || [];
-  return list.map(g => ({
-    appid: g.appid,
-    name: g.name || `App ${g.appid}`,
-    playtime_minutes: g.playtime_forever || 0,
-    img_icon_url: g.img_icon_url || '',
-    icon: iconUrl(g.appid, g.img_icon_url),
-    header: headerUrl(g.appid)
-  }));
-}
-
-async function fetchPlayerAchievements(appid) {
-  const { steamApiKey, steamId, language } = getSettings();
-  const data = await steamGet('/ISteamUserStats/GetPlayerAchievements/v1/', {
-    key: steamApiKey,
-    steamid: steamId,
-    appid,
-    l: language || 'english'
-  });
-  const list = data?.playerstats?.achievements || [];
-  const unlocked = list.filter(a => Number(a.achieved) === 1).length;
-  let lastUnlockTimeSec = null;
-  for (const a of list) {
-    if (Number(a.achieved) === 1 && Number(a.unlocktime) > 0) {
-      lastUnlockTimeSec = Math.max(lastUnlockTimeSec || 0, Number(a.unlocktime));
+  const patch = { ...next };
+  delete patch.steamApiKey; delete patch.clearApiKey;
+  // Accept SteamID64, profile URL or custom name.
+  if (typeof patch.steamId === 'string') {
+    const input = patch.steamId.trim();
+    if (input && input !== data.getSettings().steamId) {
+      try { patch.steamId = await steam.resolveSteamId(input, data.getApiKey()); }
+      catch (err) { return { ok: false, error: err.kind === 'missing_credentials' ? 'need_key_for_vanity' : 'profile_not_found' }; }
+      if (patch.steamId !== data.getSettings().steamId) data.setProfile(null); // name/avatar belong to the old profile
     }
   }
-  return { total: list.length, unlocked, lastUnlockTimeSec };
-}
-
-async function fetchGlobalAchievementSchema(appid) {
-  const { steamApiKey, language } = getSettings();
-  if (!steamApiKey) return [];
-  const data = await steamGet('/ISteamUserStats/GetSchemaForGame/v2/', { key: steamApiKey, appid, l: language || 'english' });
-  const list = data?.game?.availableGameStats?.achievements || [];
-  return list.map(a => ({
-    apiName: a.name || '',
-    displayName: a.displayName || '',
-    description: a.description || '',
-    hidden: Number(a.hidden) === 1,
-    icon: a.icon || '',
-    icongray: a.icongray || ''
-  })).filter(a => a.apiName);
-}
-
-function toIso(ts = Date.now()) { try { return new Date(ts).toISOString(); } catch { return null; } }
-function achievementDir(appid) { return path.join(app.getPath('userData'), 'achievement-icons', String(appid)); }
-function ensureDir(p) { try { fs.mkdirSync(p, { recursive: true }); } catch {} }
-function sanitizeName(name) { return String(name || '').replace(/[^\w.-]/g, '_'); }
-async function downloadIconIfMissing(url, filePath) {
-  if (!url || !filePath) return;
-  try { if (fs.existsSync(filePath) && fs.statSync(filePath).size > 0) return; } catch {}
-  try {
-    const res = await fetch(url, { method: 'GET' });
-    if (!res.ok) return;
-    const buf = Buffer.from(await res.arrayBuffer());
-    ensureDir(path.dirname(filePath));
-    fs.writeFileSync(filePath, buf);
-  } catch {}
-}
-
-function trackChange(appid, apiName, type, oldValue, newValue) {
-  pushAchievementChange({ appId: Number(appid), achievementApiName: apiName, changeType: type, oldValue, newValue, changedAt: toIso() });
-}
-
-async function syncGameAchievements(appid) {
-  const nowIso = toIso();
-  const numericAppid = Number(appid);
-  if (!Number.isFinite(numericAppid) || numericAppid <= 0) {
-    console.warn('[achievements] invalid appid for sync:', appid);
-    return [];
-  }
-
-  const settings = getSettings() || {};
-  const steamApiKey = String(settings.steamApiKey || '').trim();
-  const steamId = String(settings.steamId || '').trim();
-  if (!steamApiKey) console.warn('[achievements] missing Steam API key in settings (appid=%s)', numericAppid);
-  if (!steamId) console.warn('[achievements] missing SteamID64 in settings (appid=%s)', numericAppid);
-
-  console.log('[achievements] sync start appid=%s', numericAppid);
-
-  let schema = [];
-  let schemaOk = false;
-  try {
-    schema = await fetchGlobalAchievementSchema(numericAppid);
-    schemaOk = Array.isArray(schema);
-  } catch (err) {
-    console.warn('[achievements] schema fetch failed appid=%s error=%s', numericAppid, err?.message || err);
-  }
-
-  let playerAchievements = [];
-  let playerOk = false;
-  try {
-    const player = await steamGet('/ISteamUserStats/GetPlayerAchievements/v1/', { key: steamApiKey, steamid: steamId, appid: numericAppid, l: settings.language || 'english' });
-    playerAchievements = player?.playerstats?.achievements || [];
-    playerOk = Array.isArray(playerAchievements);
-  } catch (err) {
-    console.warn('[achievements] player achievements fetch failed appid=%s error=%s', numericAppid, err?.message || err);
-  }
-
-  const playerMap = new Map((playerAchievements || []).map(a => [a.apiname, a]));
-  const root = getAchievementsMap();
-  const prevGame = root[numericAppid] || {};
-  const nextGame = { ...prevGame };
-  const seen = new Set();
-
-  for (const sch of (schema || [])) {
-    const apiName = sch.apiName;
-    if (!apiName) continue;
-    seen.add(apiName);
-    const p = playerMap.get(apiName);
-    const prev = nextGame[apiName] || {};
-    const unlocked = playerOk ? Number(p?.achieved) === 1 : !!prev.unlocked;
-    const unlockTimeSec = playerOk ? (Number(p?.unlocktime) > 0 ? Number(p.unlocktime) : null) : (prev.unlockTimeSec || null);
-    const baseName = sanitizeName(apiName);
-    const dir = achievementDir(numericAppid);
-    const localIconPath = path.join(dir, `${baseName}.png`);
-    const localGrayPath = path.join(dir, `${baseName}_gray.png`);
-    await downloadIconIfMissing(sch.icon, localIconPath);
-    await downloadIconIfMissing(sch.icongray, localGrayPath);
-    const next = {
-      appId: numericAppid,
-      achievementApiName: apiName,
-      displayName: sch.displayName || prev.displayName || apiName,
-      description: sch.description || prev.description || '',
-      hidden: typeof sch.hidden === 'boolean' ? sch.hidden : !!prev.hidden,
-      unlocked,
-      unlockTimeSec,
-      unlockDate: unlockTimeSec ? toIso(unlockTimeSec * 1000) : null,
-      iconUrl: sch.icon || prev.iconUrl || '',
-      iconGrayUrl: sch.icongray || prev.iconGrayUrl || '',
-      localIconPath: fs.existsSync(localIconPath) ? localIconPath : (prev.localIconPath || ''),
-      localGrayIconPath: fs.existsSync(localGrayPath) ? localGrayPath : (prev.localGrayIconPath || ''),
-      firstSeenAt: prev.firstSeenAt || nowIso,
-      lastSeenAt: nowIso,
-      lastSyncedAt: nowIso,
-      existsInCurrentSteamData: true,
-      preservedLocalOnly: false
-    };
-    nextGame[apiName] = next;
-  }
-
-  if (schemaOk) {
-    for (const [apiName, old] of Object.entries(nextGame)) {
-      if (seen.has(apiName)) continue;
-      if (!old || typeof old !== 'object') continue;
-      nextGame[apiName] = { ...old, lastSyncedAt: nowIso, existsInCurrentSteamData: false, preservedLocalOnly: true };
-    }
-  } else {
-    console.warn('[achievements] keeping local achievements because schema fetch failed appid=%s', numericAppid);
-  }
-
-  root[numericAppid] = nextGame;
-  setAchievementsMap(root);
-  const result = Object.values(nextGame);
-  if (!result.length) console.log('[achievements] no achievements available appid=%s', numericAppid);
-  console.log('[achievements] sync end appid=%s saved=%s schemaOk=%s playerOk=%s', numericAppid, result.length, schemaOk, playerOk);
-  return result;
-}
-
-
-
-async function syncOne(appid) {
-  const now = Date.now();
-  let ach = { total: 0, unlocked: 0, lastUnlockTimeSec: null };
-
-  try { ach = await fetchPlayerAchievements(appid); } catch {}
-  try { await syncGameAchievements(appid); } catch {}
-
-  const current = getGamesMap()[appid] || {};
-  let completedAtSec = current.completedAtSec || null;
-
-  const isComplete = (Number(ach.total) || 0) > 0 && (Number(ach.unlocked) || 0) >= (Number(ach.total) || 0);
-  if (isComplete && !completedAtSec && ach.lastUnlockTimeSec) {
-    completedAtSec = ach.lastUnlockTimeSec;
-  }
-
-  // Do NOT overwrite manual difficulty.
-  return upsertGame(appid, { coverUrl: headerUrl(appid), 
-    achUnlocked: ach.unlocked,
-    achTotal: ach.total,
-    lastUnlockTimeSec: ach.lastUnlockTimeSec || current.lastUnlockTimeSec || null,
-    completedAtSec,
-    updatedAt: now
-  });
-}
-
-
-async function syncSelected() {
-  const selected = getSelected();
-  if (!selected.length) return { ok: true, synced: 0 };
-  let count = 0;
-  for (const appid of selected) {
-    await syncOne(appid);
-    count++;
-  }
-  const now = Date.now();
-  setLastSync(now);
-  return { ok: true, synced: count, at: now };
-}
-
-// --- IPC API ---
-async function fetchAppDetails(appid) {
-  try{
-    const url = `https://store.steampowered.com/api/appdetails?appids=${appid}&l=english`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const j = await res.json();
-    const data = j?.[String(appid)]?.data;
-    if (!data) return null;
-    const genres = (data.genres || []).map(g=>g.description).filter(Boolean);
-    return {
-      name: data.name || '',
-      header_image: data.header_image || '',
-      short_description: data.short_description || '',
-      genres
-    };
-  }catch{
-    return null;
-  }
-}
-
-ipcMain.handle('settings:get', async () => ({ settings: getSettings(), lastSync: getLastSync() }));
-ipcMain.handle('settings:set', async (e, next) => { setSettings(next); scheduleAutoSync(); return { ok: true, settings: getSettings() }; });
-
-ipcMain.handle('library:list', async () => {
-  const gamesMap = getGamesMap();
-  const list = Object.values(gamesMap).sort((a,b)=> (a.name||'').localeCompare(b.name||'', 'es'));
-  return { games: list, lastSync: getLastSync(), selected: getSelected(), achievements: getAchievementsMap() };
+  const prevLang = data.steamLanguage();
+  data.setSettings(patch);
+  sync.schedule();
+  applyLoginItem();
+  updateTrayMenu();
+  // Achievement names come in the selected language: refresh them in the background.
+  if (data.steamLanguage() !== prevLang) setTimeout(() => sync.syncAll({ force: true, reason: 'language' }).catch(() => {}), 500);
+  return { ok: true, settings: data.publicSettings() };
 });
 
-ipcMain.handle('steam:ownedGames', async () => {
-  try {
-    const list = await fetchOwnedGames();
-    return { ok: true, games: list };
-  } catch (err) {
-    return { ok: false, games: [], error: err?.message || 'No se pudo cargar la biblioteca de Steam' };
-  }
+function missableLeft(appid) {
+  const list = (data.getAchGame(appid) || {}).list || {};
+  let n = 0;
+  for (const a of Object.values(list)) if (!a.unlocked && a.existsInCurrentSteamData !== false && (a.missable || (a.tags || []).includes('missable'))) n++;
+  return n;
+}
+handle('library:list', () => ({
+  ok: true,
+  games: Object.values(data.getGames()).map(g => ({ ...g, missableLeft: missableLeft(g.appid) })),
+  lastSync: data.getLastSync(),
+  syncing: sync.isRunning()
+}));
+
+handle('library:owned', async () => {
+  const s = data.getSettings();
+  const owned = await steam.getOwnedGames({ key: data.getApiKey(), steamId: s.steamId, language: data.steamLanguage() });
+  const ignored = new Set(data.getIgnored());
+  return { ok: true, games: owned.map(g => ({ ...g, inLibrary: data.hasGame(g.appid), ignored: ignored.has(g.appid) })) };
 });
 
-ipcMain.handle('library:addSelected', async (e, appids) => {
-  let owned = [];
-  try {
-    owned = await fetchOwnedGames();
-  } catch {
-    // Allow adding AppIDs manually even when Steam API credentials are missing/invalid.
-    owned = [];
+handle('library:add', async (appids = [], ownedHint = []) => {
+  const hint = new Map((ownedHint || []).map(g => [Number(g.appid), g]));
+  const added = [];
+  let skipped = 0;
+  for (const raw of appids) {
+    const id = Number(raw);
+    if (!id) continue;
+    if (data.hasGame(id)) { skipped++; continue; } // never overwrite an existing game
+    const h = hint.get(id);
+    data.createGame(id, h ? {
+      name: String(h.name || ''), coverUrl: steam.headerUrl(id),
+      hours: (Number(h.playtimeMinutes) || 0) / 60, playtimeMinutes: Number(h.playtimeMinutes) || 0,
+      owned: h.playtimeMinutes != null
+    } : { coverUrl: steam.headerUrl(id) });
+    added.push(id);
   }
-  const want = new Set((appids || []).map(Number));
-  setSelected([...getSelected(), ...want]);
-
-  const now = Date.now();
-  const ownedMap = new Map(owned.map(g => [g.appid, g]));
-  for (const appid of want) {
-    const og = ownedMap.get(appid);
-    if (!og) continue;
-    upsertGame(appid, {
-      name: og.name,
-      hours: (Number(og.playtime_minutes) || 0) / 60,
-      coverUrl: og.header || og.icon || '',
-      genrePrimary: '',
-      genreSecondary: '',
-      genreLocked: false,
-      manualHours: null,
-      description: '',
-      notes: '',
-      createdAt: now,
-      updatedAt: now
-    });
-        const genres = await fetchStoreGenres(appid);
-        if (genres.length) {
-          upsertGame(appid, { genrePrimary: genres[0] || '', genreSecondary: genres[1] || '' });
-        }
+  if (added.length) {
+    enrich.enqueue(added);
+    // Fetch achievements for the new games in the background.
+    setTimeout(() => sync.syncAll({ only: added, reason: 'added' }).catch(() => {}), 300);
   }
-  return { ok: true, selected: getSelected() };
+  return { ok: true, added: added.length, skipped };
 });
 
+handle('library:update', (patch = {}) => {
+  const g = data.updateGameFromUI(patch.appid, patch);
+  return g ? { ok: true, game: g } : { ok: false, error: 'not_found' };
+});
 
-ipcMain.handle('library:removeGame', async (_e, appid) => {
-  const id = Number(appid);
-  if (!id) return { ok: false };
+handle('library:reorder', (appids) => { data.reorderPriorities(appids); return { ok: true }; });
+handle('library:remove', (appid) => ({ ok: true, removed: data.removeGame(appid) }));
+handle('library:refreshDetails', (appid) => { enrich.enqueue([appid], { force: true }); return { ok: true }; });
 
-  // Remove from games map
-  const games = getGamesMap();
-  const existed = Object.prototype.hasOwnProperty.call(games, id);
-  if (existed) {
-    delete games[id];
-    store.set('games', games);
+handle('steam:sync', (opts = {}) => sync.syncAll({ force: !!opts.force, reason: 'manual' }));
+handle('steam:searchStore', async (term) => {
+  const t = String(term || '').trim();
+  if (!t) return { ok: true, items: [] };
+  const items = await steam.searchStore(t);
+  return { ok: true, items: items.map(i => ({ ...i, inLibrary: data.hasGame(i.appid) })) };
+});
+
+handle('achievements:get', async (appid, opts = {}) => {
+  const g = data.getGame(appid);
+  if (!g) return { ok: false, error: 'not_found' };
+  // Refresh only if it has been a while, not every time the editor opens.
+  const stale = !g.achSyncedAt || Date.now() - g.achSyncedAt > 10 * 60000;
+  if ((opts.refresh || stale) && data.getApiKey() && data.getSettings().steamId && !g.noStats) {
+    try { await sync.syncGame(appid); } catch (err) { /* show local data */ }
   }
-
-  // Also remove from the selected list to avoid future sync attempts
-  const selected = getSelected().filter(x => Number(x) !== id);
-  setSelected(selected);
-
-  return { ok: true, removed: existed };
+  return { ok: true, achievements: sync.achievementsForUI(appid), changes: data.getChanges(appid), game: data.getGame(appid) };
 });
 
-ipcMain.handle('library:updateManual', async (e, patch) => {
-  if (!patch?.appid) return { ok: false };
-  const appid = Number(patch.appid);
-  const next = { ...patch };
-  delete next.appid;
-  next.updatedAt = Date.now();
-  const g = upsertGame(appid, next);
-  return { ok: true, game: g };
+handle('achievements:update', (appid, apiName, patch) => {
+  const a = data.updateAchievementUserData(appid, apiName, patch);
+  return a ? { ok: true } : { ok: false, error: 'not_found' };
 });
 
-ipcMain.handle('steam:syncNow', async () => {
-  const selected = new Set(getSelected());
-  if (selected.size === 0) return { ok: true, synced: 0 };
-
-  // update hours/name/cover from owned games
-  try{
-    const owned = await fetchOwnedGames();
-    const ownedMap = new Map(owned.map(g => [g.appid, g]));
-    for (const appid of selected) {
-      const og = ownedMap.get(appid);
-      if (!og) continue;
-      upsertGame(appid, {
-        name: og.name,
-        hours: (Number(og.playtime_minutes) || 0) / 60,
-        coverUrl: og.header || og.icon || ''
-      });
-      // Fetch genres once (if missing)
-      const current = getGamesMap()[appid];
-      if (!current?.genrePrimary) {
-        const genres = await fetchStoreGenres(appid);
-        if (genres.length) {
-          const cur = getGamesMap()[appid] || {};
-          const locked = !!cur.genreLocked;
-          const missing = !cur.genrePrimary && !cur.genreSecondary;
-          if (!locked || missing) {
-            upsertGame(appid, { genrePrimary: genres[0] || '', genreSecondary: genres[1] || '' });
-          }
-        }
+handle('stats:get', () => {
+  const games = data.getGames();
+  const all = data.allAchievements();
+  const unlocks = [];
+  for (const [appid, g] of Object.entries(all)) {
+    const name = (games[appid] && games[appid].name) || '';
+    if (!games[appid]) continue;
+    for (const a of Object.values((g && g.list) || {})) {
+      if (a.unlocked && a.unlockTimeSec) {
+        unlocks.push({ appid: Number(appid), t: a.unlockTimeSec, pct: a.globalPct ?? null, name: a.displayName, game: name, icon: steam.normalizeIconUrl(a.iconUrl) });
       }
     }
-  } catch {}
-
-  return await syncSelected();
+  }
+  return { ok: true, unlocks };
 });
 
-ipcMain.handle('backup:export', async () => {
-  const payload = { version: 2, exportedAt: new Date().toISOString(), data: store.store, achievements: getAchievementsMap(), achievementChanges: getAchievementChanges() };
-  const { filePath, canceled } = await dialog.showSaveDialog({
-    title: 'Exportar biblioteca',
-    defaultPath: `mi-biblioteca-steam_${new Date().toISOString().slice(0,10)}.json`,
+handle('backup:export', async () => {
+  const { filePath, canceled } = await dialog.showSaveDialog(win, {
+    title: 'Platinum Path',
+    defaultPath: `platinum-path-backup_${new Date().toISOString().slice(0, 10)}.json`,
     filters: [{ name: 'JSON', extensions: ['json'] }]
   });
-  if (canceled || !filePath) return { ok: false };
-  require('fs').writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
+  if (canceled || !filePath) return { ok: false, canceled: true };
+  data.flushAll();
+  fs.writeFileSync(filePath, JSON.stringify(data.exportPayload(), null, 2), 'utf-8');
   return { ok: true, filePath };
 });
 
-ipcMain.handle('backup:import', async () => {
-  const { filePaths, canceled } = await dialog.showOpenDialog({
-    title: 'Importar biblioteca',
-    properties: ['openFile'],
-    filters: [{ name: 'JSON', extensions: ['json'] }]
+handle('backup:import', async (texts = {}) => {
+  const { filePaths, canceled } = await dialog.showOpenDialog(win, {
+    title: 'Platinum Path', properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }]
   });
-  if (canceled || !filePaths?.[0]) return { ok: false };
-  const raw = require('fs').readFileSync(filePaths[0], 'utf-8');
-  const json = JSON.parse(raw);
-  const next = json?.data || json;
-  if (!next) return { ok: false };
-  store.store = next;
-  if (json?.achievements && typeof json.achievements === 'object') store.set('achievements', json.achievements);
-  if (Array.isArray(json?.achievementChanges)) store.set('achievementChanges', json.achievementChanges);
-  ensureStoreShape();
-  scheduleAutoSync();
-  return { ok: true };
+  if (canceled || !filePaths || !filePaths[0]) return { ok: false, canceled: true };
+  let parsed;
+  try { parsed = data.parseBackup(JSON.parse(fs.readFileSync(filePaths[0], 'utf-8'))); }
+  catch { return { ok: false, error: 'invalid_file' }; }
+  if (!parsed.ok) return parsed;
+
+  const current = Object.keys(data.getGames()).length;
+  const msg = String(texts.confirm || 'Replace current library ({current} games) with the backup ({incoming} games)?')
+    .replace('{current}', current).replace('{incoming}', parsed.summary.games);
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'warning', buttons: [texts.cancel || 'Cancel', texts.ok || 'Import'], defaultId: 1, cancelId: 0,
+    title: 'Platinum Path', message: msg, detail: texts.detail || ''
+  });
+  if (response !== 1) return { ok: false, canceled: true };
+
+  // Automatic safety copy of the current data.
+  data.flushAll();
+  const dir = path.join(app.getPath('userData'), 'backups');
+  fs.mkdirSync(dir, { recursive: true });
+  const safety = path.join(dir, `before-import_${Date.now()}.json`);
+  fs.writeFileSync(safety, JSON.stringify(data.exportPayload(), null, 2), 'utf-8');
+
+  parsed.apply();
+  sync.schedule();
+  enrich.enqueue(data.getSelected());
+  return { ok: true, games: parsed.summary.games, safetyCopy: safety };
 });
 
-ipcMain.handle('achievements:byGame', async (_e, appid) => {
+handle('update:check', () => updater.check());
+handle('update:download', () => updater.download());
+handle('update:install', () => { updater.install(); return { ok: true }; });
+
+// ---------- ignored games, covers, HowLongToBeat, now playing, showcase ----------
+handle('library:ignored', () => ({ ok: true, appids: data.getIgnored() }));
+handle('library:setIgnored', (appid, ignored) => ({ ok: true, appids: data.setIgnored(appid, !!ignored) }));
+handle('library:fixCover', async (appid) => ({ ok: true, url: await enrich.fixCover(appid) }));
+
+handle('hltb:lookup', async (appid, opts = {}) => {
+  if (!data.getSettings().hltbEnabled && !opts.force) return { ok: true, hltb: null };
+  const v = await hltb.lookup(appid, opts);
+  return { ok: true, hltb: v };
+});
+let hltbAllRunning = false;
+handle('hltb:lookupAll', async () => {
+  if (hltbAllRunning) return { ok: true, running: true };
+  hltbAllRunning = true;
+  const ids = Object.values(data.getGames()).filter(g => !g.hltb || g.hltb.error).map(g => g.appid);
+  (async () => {
+    let done = 0;
+    for (const id of ids) {
+      try { await hltb.lookup(id); } catch {}
+      done++;
+      send('hltb:progress', { done, total: ids.length });
+      if (done % 5 === 0 || done === ids.length) send('library:changed', { appids: [] });
+    }
+    hltbAllRunning = false;
+  })();
+  return { ok: true, total: ids.length };
+});
+
+handle('nowPlaying:get', () => ({ ok: true, current: nowPlaying.get() }));
+
+handle('showcase:get', () => ({ ok: true, games: showcase.collect(), profile: data.getProfile() }));
+handle('showcase:export', async (texts = {}) => {
+  const { filePath, canceled } = await dialog.showSaveDialog(win, {
+    title: 'Platinum Path',
+    defaultPath: `platinum-path-vitrina_${new Date().toISOString().slice(0, 10)}.png`,
+    filters: [{ name: 'PNG', extensions: ['png'] }]
+  });
+  if (canceled || !filePath) return { ok: false, canceled: true };
+  const png = await showcase.renderImage({ texts, accent: data.getSettings().themeAccent, steamName: texts.steamName || '' });
+  fs.writeFileSync(filePath, png);
+  return { ok: true, filePath };
+});
+
+// ---------- first-run setup ----------
+/** Checks that the saved key + profile work and that game details are public. */
+handle('setup:check', async () => {
+  const key = data.getApiKey();
+  const steamId = data.getSettings().steamId;
+  if (!key || !steamId) return { ok: false, error: 'missing_credentials' };
+  let profile = null;
   try {
-    await syncGameAchievements(appid);
+    profile = await steam.getPlayerSummary({ key, steamId });
   } catch (err) {
-    console.warn('[achievements] on-open sync failed appid=%s error=%s', appid, err?.message || err);
+    return { ok: false, error: err.kind || 'network' };
   }
-  const all = getAchievementsMap();
-  const game = all?.[Number(appid)] || {};
-  const changes = getAchievementChanges().filter(c => Number(c.appId) === Number(appid));
-  return { ok: true, achievements: Object.values(game), changes };
+  if (!profile) return { ok: false, error: 'profile_not_found' };
+  data.setProfile(profile);
+  try {
+    const owned = await steam.getOwnedGames({ key, steamId, language: data.steamLanguage() });
+    return { ok: true, personaName: profile.personaName, avatar: profile.avatar, games: owned.length, withStats: owned.filter(g => g.hasStats).length };
+  } catch (err) {
+    return { ok: false, error: err.kind || 'network', personaName: profile.personaName, avatar: profile.avatar };
+  }
+});
+
+// ---------- recap image ----------
+handle('recap:export', async (payload = {}) => {
+  const texts = payload.texts || {};
+  const { filePath, canceled } = await dialog.showSaveDialog(win, {
+    title: 'Platinum Path',
+    defaultPath: `platinum-path-${String(texts.fileTag || 'recap').replace(/[^\w.-]+/g, '-')}.png`,
+    filters: [{ name: 'PNG', extensions: ['png'] }]
+  });
+  if (canceled || !filePath) return { ok: false, canceled: true };
+  const png = await recap.renderImage({
+    recap: payload.recap || {}, texts,
+    accent: data.getSettings().themeAccent,
+    steamName: (data.getProfile() || {}).personaName || ''
+  });
+  fs.writeFileSync(filePath, png);
+  return { ok: true, filePath };
 });

@@ -8,30 +8,39 @@ It is built as a **100% local, offline-first tool**, giving you full control ove
 
 ## ✨ Features
 
-- Import and track games from your Steam library
-- Achievement progress and completion tracking
-- Playtime tracking
-- Estimated difficulty for 100% completion
-- Personal ratings and notes
-- Manual game management (add / edit / remove)
-- Powerful sorting and filtering options
-- Fully local storage (no accounts, no cloud)
+- Import games from your Steam library (or add any game by name / AppID)
+- Achievement progress, 100% tracking and "Almost 100%" detection
+- **Estimated 100% difficulty** from global achievement rarity (your manual value always wins)
+- Per-game achievement list: easiest/rarest first, **next target**, missable flags and personal notes
+- Alert when Steam adds new achievements to a game you had at 100%
+- Statistics: activity heatmap, achievements per month, 100% per year, streaks, rarest achievements
+- Yearly 100% goal, personal priority order (drag & drop)
+- Desktop notifications for new achievements and completions
+- Quick links: play, store page, Steam achievements, guides
+- Ratings, notes, status, manual hours and genres
+- Backups (export / import) — your API key is never included
+- Now playing detection, platinum showcase (export as image), collections, achievement tags, ignored games
+- HowLongToBeat time to 100% (unofficial), list view, system tray, 100% celebration
+- Monthly / yearly recap, shareable as an image
+- Setup assistant on first run (API key, profile and privacy check)
+- Spanish / English interface
+- Fully local storage (no accounts, no cloud). API key encrypted with Windows (DPAPI)
 
 ---
 
 ## 🖥️ Platform
 
-- **Windows only**
-- Portable desktop application (no installation required)
+- **Windows** (installer or portable ZIP)
 
 ---
 
 ## 🚀 How to Use
 
-1. Download the latest portable ZIP from the **Releases** section
-2. Extract the ZIP anywhere on your system
-3. Run `Platinum Path.exe`
-4. Start organizing your Steam library
+1. Download the installer (`Platinum-Path-Setup-x.y.z.exe`, with automatic updates) or the portable ZIP from **Releases**
+2. Run it: the setup assistant guides you through the next two steps
+3. Paste your [Steam Web API key](https://steamcommunity.com/dev/apikey) and your profile (SteamID64, profile URL or custom name)
+4. Make sure your Steam profile's *Game details* are public
+5. Click **Add games** and pick the ones you want to complete
 
 > ⚠️ Windows may show a SmartScreen warning because the app is not digitally signed.  
 > This is normal for indie/open-source projects.
@@ -40,7 +49,7 @@ It is built as a **100% local, offline-first tool**, giving you full control ove
 
 ## 💾 Data & Privacy
 
-- All data is stored **locally on your computer**
+- All data is stored **locally on your computer** (`%APPDATA%\platinum-path`, open it from the ⋯ menu)
 - No analytics, tracking, or external servers
 - You fully own your data
 
@@ -83,6 +92,22 @@ This project is licensed under the **MIT License**.
 
 ---
 
+## 🛠️ Development
+
+```bash
+npm install
+npm start          # run the app
+npm test           # unit tests (logic, data migration)
+npm run dist       # build installer + portable ZIP into dist/
+npm run release    # build and publish to GitHub Releases (needs GH_TOKEN)
+```
+
+Test against a simulated Steam API (no key needed):
+
+```bash
+PP_USER_DATA=./tmp-data PP_MOCK_STEAM=test/mockSteam.js npm start
+```
+
 ---
 
 # Platinum Path (Español)
@@ -95,30 +120,39 @@ Está diseñada como una herramienta **100% local**, sin cuentas, sin suscripcio
 
 ## ✨ Funcionalidades
 
-- Importar y gestionar juegos de tu biblioteca de Steam
-- Seguimiento de logros y progreso de completado
-- Registro de horas jugadas
-- Estimación de dificultad para el 100%
-- Valoraciones y notas personales
-- Gestión manual de juegos (añadir / editar / eliminar)
-- Opciones avanzadas de ordenación y filtrado
-- Almacenamiento completamente local
+- Importar juegos de tu biblioteca de Steam (o añadir cualquiera por nombre / AppID)
+- Progreso de logros, seguimiento del 100% y detección de juegos «Casi al 100%»
+- **Dificultad estimada del 100%** a partir de la rareza global de los logros (tu valor manual siempre manda)
+- Lista de logros por juego: más fáciles/raros primero, **siguiente objetivo**, marca de perdibles y notas personales
+- Aviso cuando Steam añade logros nuevos a un juego que tenías al 100%
+- Estadísticas: mapa de actividad, logros por mes, 100% por año, rachas y logros más raros
+- Objetivo anual de juegos al 100% y orden de prioridad personal (arrastrar y soltar)
+- Notificaciones de escritorio de logros nuevos y juegos completados
+- Accesos rápidos: jugar, tienda, logros en Steam y guías
+- Puntuaciones, notas, estado, horas manuales y géneros
+- Copias de seguridad (exportar / importar) — tu API key nunca se incluye
+- Juego en curso detectado, vitrina de platinos (exportable como imagen), colecciones, etiquetas de logros, juegos ignorados
+- Tiempo para el 100% de HowLongToBeat (no oficial), vista de lista, bandeja del sistema y celebración al 100%
+- Resumen mensual / anual, exportable como imagen
+- Asistente de configuración al primer inicio (API key, perfil y comprobación de privacidad)
+- Interfaz en español e inglés
+- Almacenamiento 100% local. La API key se guarda cifrada por Windows (DPAPI)
 
 ---
 
 ## 🖥️ Plataforma
 
-- **Solo Windows**
-- Aplicación portable (no requiere instalación)
+- **Windows** (instalador o ZIP portable)
 
 ---
 
 ## 🚀 Cómo usarla
 
-1. Descarga el ZIP portable más reciente desde **Releases**
-2. Descomprime el archivo en cualquier carpeta
-3. Ejecuta `Platinum Path.exe`
-4. Empieza a organizar tu biblioteca
+1. Descarga el instalador (`Platinum-Path-Setup-x.y.z.exe`, con actualizaciones automáticas) o el ZIP portable desde **Releases**
+2. Ábrelo: el asistente de configuración te guía en los dos pasos siguientes
+3. Pega tu [Steam Web API key](https://steamcommunity.com/dev/apikey) y tu perfil (SteamID64, URL del perfil o nombre personalizado)
+4. Asegúrate de que los *detalles de juego* de tu perfil de Steam son públicos
+5. Pulsa **Añadir juegos** y elige los que quieras completar
 
 > ⚠️ Windows puede mostrar un aviso de seguridad (SmartScreen).  
 > Es normal en aplicaciones independientes sin certificado digital.
@@ -127,7 +161,7 @@ Está diseñada como una herramienta **100% local**, sin cuentas, sin suscripcio
 
 ## 💾 Datos y privacidad
 
-- Todos los datos se guardan **en tu propio ordenador**
+- Todos los datos se guardan **en tu propio ordenador** (`%APPDATA%\platinum-path`, se abre desde el menú ⋯)
 - No se recopila ningún tipo de información
 - No hay servidores externos
 

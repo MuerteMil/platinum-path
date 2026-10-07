@@ -1,23 +1,28 @@
 {
   "name": "platinum-path",
-  "version": "1.1.0",
+  "version": "1.4.0",
   "description": "Local game library with Steam sync (playtime & achievements) and estimated completion difficulty",
   "author": "MuerteMil",
   "license": "MIT",
   "main": "src/main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MuerteMil/platinum-path.git"
+  },
   "scripts": {
     "start": "electron .",
+    "test": "node --test test/*.test.js",
     "dist": "electron-builder --win --x64",
     "dist:linux": "electron-builder --linux AppImage",
-    "dist:linux:deb": "electron-builder --linux deb"
+    "dist:linux:deb": "electron-builder --linux deb",
+    "release": "electron-builder --win --x64 --publish always"
   },
   "dependencies": {
-    "electron-store": "^8.2.0",
-    "node-fetch": "^3.3.2"
+    "electron-updater": "^6.8.9"
   },
   "devDependencies": {
-    "electron": "^30.0.0",
-    "electron-builder": "^24.13.3"
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3"
   },
   "build": {
     "appId": "com.muertemil.platinumpath",
@@ -26,12 +31,32 @@
       "output": "dist"
     },
     "files": [
-      "src/**/*"
+      "src/**/*",
+      "!test/**"
     ],
     "win": {
-      "target": "nsis",
-      "icon": "src/assets/icon.ico"
-    }
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "icon": "src/assets/icon.ico",
+      "artifactName": "Platinum-Path-${version}-portable.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Platinum-Path-Setup-${version}.${ext}"
+    },
+    "linux": {
+      "icon": "src/assets/icon.png",
+      "category": "Game"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "MuerteMil",
+        "repo": "platinum-path"
+      }
+    ]
   }
 }
-
