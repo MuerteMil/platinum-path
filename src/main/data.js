@@ -25,7 +25,10 @@ const DEFAULT_SETTINGS = {
   hltbEnabled: true       // look up HowLongToBeat times
 };
 
-const ACH_TAGS = ['missable', 'online', 'coop', 'grind', 'hard'];
+// Built-in achievement tags. 'bugged' is only a label: it does not change difficulty or progress.
+const ACH_TAGS = ['missable', 'online', 'coop', 'grind', 'hard', 'bugged'];
+const MAX_CUSTOM_TAGS = 50;
+const CUSTOM_TAG_ID = /^c_[a-z0-9]{4,16}$/;
 
 // Fields the renderer is allowed to change on a game.
 const EDITABLE_GAME_FIELDS = [
@@ -113,6 +116,7 @@ function normalize() {
   if (!Array.isArray(d.selectedAppIds)) d.selectedAppIds = [];
   if (!Array.isArray(d.achievementChanges)) d.achievementChanges = [];
   if (!Array.isArray(d.ignoredAppIds)) d.ignoredAppIds = [];
+  d.customTags = sanitizeCustomTags(d.customTags);
   // Every game in the library must be in the sync list and vice versa.
   const ids = new Set(d.selectedAppIds.map(Number).filter(Boolean));
   for (const k of Object.keys(d.games)) ids.add(Number(k));
@@ -129,7 +133,14 @@ function normalize() {
 
 // ---------- settings / API key ----------
 function canEncrypt() {
-  try { return !!safeStorage && safeStorage.isEncryptionAvailable(); } catch { return false; }
+  try {
+    if (!safeStorage || !safeStorage.isEncryptionAvailable()) return false;
+    // Linux without a keyring (GNOME Keyring / KWallet) falls back to a hard-coded password:
+    // that is not real encryption, so do not claim it is.
+    if (process.platform === 'linux' && typeof safeStorage.getSelectedStorageBackend === 'function' &&
+        safeStorage.getSelectedStorageBackend() === 'basic_text') return false;
+    return true;
+  } catch { return false; }
 }
 
 function getSettings() { return library.data.settings; }
@@ -306,7 +317,7 @@ function updateAchievementUserData(appid, apiName, patch) {
   if (patch && 'userNote' in patch) a.userNote = String(patch.userNote || '').slice(0, 2000);
   if (patch && 'missable' in patch) a.missable = !!patch.missable;
   if (patch && Array.isArray(patch.tags)) {
-    a.tags = Array.from(new Set(patch.tags.filter(t => ACH_TAGS.includes(t))));
+    a.tags = Array.from(new Set(patch.tags.filter(isValidTag)));
     a.missable = a.tags.includes('missable');
   } else if (patch && 'missable' in patch) {
     const tags = new Set(a.tags || []);
@@ -318,6 +329,102 @@ function updateAchievementUserData(appid, apiName, patch) {
 }
 
 function allAchievements() { return achStore.data.games; }
+
+// ---------- custom achievement tags ----------
+// Stored in library.json as [{ id: 'c_xxxx', name, icon }]. Achievements reference them by id.
+function firstGrapheme(str) {
+  const s = String(str || '').trim();
+  if (!s) return '';
+  try {
+    const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    for (const { segment } of seg.segment(s)) return segment.slice(0, 16);
+  } catch {}
+  return Array.from(s)[0] || '';
+}
+function cleanTagName(name) { return String(name || '').replace(/\s+/g, ' ').trim().slice(0, 24); }
+
+function sanitizeCustomTags(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  const ids = new Set();
+  for (const t of list) {
+    if (!t || typeof t !== 'object') continue;
+    const id = String(t.id || '');
+    const name = cleanTagName(t.name);
+    if (!CUSTOM_TAG_ID.test(id) || !name || ids.has(id)) continue;
+    ids.add(id);
+    out.push({ id, name, icon: firstGrapheme(t.icon) || '🏷️' });
+    if (out.length >= MAX_CUSTOM_TAGS) break;
+  }
+  return out;
+}
+
+function getCustomTags() { return (library.data.customTags || []).map(t => ({ ...t })); }
+
+function isValidTag(tag) {
+  return ACH_TAGS.includes(tag) || (library.data.customTags || []).some(t => t.id === tag);
+}
+
+function newTagId() {
+  const used = new Set((library.data.customTags || []).map(t => t.id));
+  let id;
+  do { id = 'c_' + Math.random().toString(36).slice(2, 10).padEnd(8, '0'); } while (used.has(id));
+  return id;
+}
+
+/** Creates a custom tag. A tag with the same name (any case) is reused instead of duplicated. */
+function createCustomTag({ name, icon } = {}) {
+  const n = cleanTagName(name);
+  if (!n) return { ok: false, error: 'tag_name_required' };
+  const list = getCustomTags();
+  const existing = list.find(t => t.name.toLowerCase() === n.toLowerCase());
+  if (existing) return { ok: true, tag: existing, existed: true };
+  if (list.length >= MAX_CUSTOM_TAGS) return { ok: false, error: 'tag_limit' };
+  const tag = { id: newTagId(), name: n, icon: firstGrapheme(icon) || '🏷️' };
+  library.set('customTags', [...list, tag]);
+  return { ok: true, tag };
+}
+
+function updateCustomTag(id, { name, icon } = {}) {
+  const list = getCustomTags();
+  const tag = list.find(t => t.id === id);
+  if (!tag) return { ok: false, error: 'not_found' };
+  if (name !== undefined) {
+    const n = cleanTagName(name);
+    if (!n) return { ok: false, error: 'tag_name_required' };
+    if (list.some(t => t.id !== id && t.name.toLowerCase() === n.toLowerCase())) return { ok: false, error: 'tag_exists' };
+    tag.name = n;
+  }
+  if (icon !== undefined) tag.icon = firstGrapheme(icon) || '🏷️';
+  library.set('customTags', list);
+  return { ok: true, tag };
+}
+
+/** Deletes a custom tag and removes it from every achievement. Returns how many achievements had it. */
+function deleteCustomTag(id) {
+  const list = getCustomTags();
+  if (!list.some(t => t.id === id)) return { ok: false, error: 'not_found' };
+  library.set('customTags', list.filter(t => t.id !== id));
+  let removed = 0;
+  for (const g of Object.values(achStore.data.games || {})) {
+    for (const a of Object.values((g && g.list) || {})) {
+      if (Array.isArray(a.tags) && a.tags.includes(id)) { a.tags = a.tags.filter(x => x !== id); removed++; }
+    }
+  }
+  if (removed) achStore.save();
+  return { ok: true, removed };
+}
+
+/** Number of achievements using each tag (built-in and custom). */
+function tagUsage() {
+  const usage = {};
+  for (const g of Object.values(achStore.data.games || {})) {
+    for (const a of Object.values((g && g.list) || {})) {
+      for (const tg of (Array.isArray(a.tags) ? a.tags : [])) usage[tg] = (usage[tg] || 0) + 1;
+    }
+  }
+  return usage;
+}
 
 // ---------- history ----------
 function pushChanges(list) {
@@ -359,6 +466,7 @@ function exportPayload() {
     achievements: achStore.data.games,
     achievementChanges: library.data.achievementChanges,
     ignoredAppIds: getIgnored(),
+    customTags: getCustomTags(),
     lastSync: getLastSync()
   };
 }
@@ -416,6 +524,7 @@ function parseBackup(json) {
         achievementChanges: Array.isArray(changes) ? changes.slice(-MAX_CHANGES) : [],
         lastSync: Number(lastSync) || 0,
         ignoredAppIds: Array.isArray(json.ignoredAppIds) ? json.ignoredAppIds.map(Number).filter(Boolean) : [],
+        customTags: sanitizeCustomTags(json.customTags),
         windowState: library.data.windowState
       });
       achStore.replaceAll({ games: convertedAch });
@@ -439,6 +548,7 @@ module.exports = {
   init, flushAll, MIN_SYNC_MINUTES,
   getSettings, setSettings, publicSettings, getApiKey, setApiKey, canEncrypt, steamLanguage,
   getIgnored, setIgnored, ACH_TAGS,
+  getCustomTags, createCustomTag, updateCustomTag, deleteCustomTag, tagUsage, sanitizeCustomTags,
   getGames, getGame, getSelected, hasGame, createGame, patchGame, updateGameFromUI, reorderPriorities, removeGame,
   achievementIconDir, getAchGame, setAchGame, updateAchievementUserData, allAchievements,
   pushChanges, getChanges,

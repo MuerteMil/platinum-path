@@ -393,6 +393,23 @@ dialog.sheet{overflow:hidden}
 .achBadge.tag-coop{color:#c9f2d6;border-color:rgba(var(--ok),.5)}
 .achBadge.tag-grind{color:#e6c8ff;border-color:rgba(168,85,247,.5)}
 .achBadge.tag-hard{color:#ffc8c8;border-color:rgba(var(--bad),.55)}
+.achBadge.tag-bugged{color:#d9f99d;border-color:rgba(132,204,22,.55)}
+.achBadge.tag-custom{color:var(--text);border-color:rgba(var(--accent-rgb),.5);background:rgba(var(--accent-rgb),.08)}
+.tagToggle.addTag{border-style:dashed}
+.tagToggle.manageTag{padding:4px 8px}
+.newTagForm{display:flex;gap:5px;align-items:center;flex-wrap:wrap;width:100%;margin-top:2px}
+.newTagForm input{font-size:12px;padding:5px 8px;width:auto}
+.newTagForm input[data-new-tag-name]{flex:1;min-width:150px;max-width:260px}
+.tagIconInput{width:52px !important;min-width:0 !important;flex:0 0 auto;text-align:center;font-size:16px;padding-left:4px !important;padding-right:4px !important}
+.tagsIntro{margin:0 0 14px}
+.tagsSection{margin-bottom:16px}
+.tagsSection > label{display:block;margin-bottom:8px}
+.tagRow{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.tagRow .grow{min-width:120px}
+.tagUses{font-size:12px;white-space:nowrap;min-width:84px;text-align:right}
+.emojiRow{gap:4px;margin-top:8px}
+.emojiPick{border:1px solid transparent;background:none;border-radius:8px;cursor:pointer;font-size:17px;padding:2px 4px}
+.emojiPick:hover{border-color:var(--border);background:var(--panel-2)}
 
 /* ---------- add games: ignore ---------- */
 .ownedCover{position:relative;aspect-ratio:460/215;background:rgba(255,255,255,.05)}

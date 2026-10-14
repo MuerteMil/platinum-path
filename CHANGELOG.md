@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.5.0
+
+### New
+- **Linux version** (AppImage and .deb), which also runs on Steam Deck in desktop mode. The AppImage updates itself; the .deb shows a link to each new version. "Start with Windows" becomes "Start with the system" on Linux (autostart entry in `~/.config/autostart`).
+- **Custom achievement tags**: create your own tags with a name and an emoji (for example "Date-based" or "Needs guide") from an achievement's tag picker (＋ New) or from ⋯ → Manage tags / Settings. They can be renamed or deleted (deleting removes them from every achievement), show up in the achievement filter, and are included in backups.
+- **"Bugged" tag** among the built-in tags. It is only a label: it does not change the estimated difficulty or the progress.
+- ⋯ → **Quit Platinum Path** closes the app completely (closing the window keeps it in the tray). Useful on desktops without a tray icon.
+- GitHub Actions workflow that builds the Windows and Linux versions.
+
+### Fixed
+- Opening the app from a taskbar or Start icon could show the default Electron window instead of Platinum Path. The development build shared the app's Windows ID, so a pin created while testing pointed to the bare Electron executable. The development build now uses its own ID. If you still have an old pinned icon, unpin it and pin the app again.
+- The setup assistant no longer says the API key is encrypted when the system cannot encrypt it (Linux without a keyring).
+
 ## 1.4.0
 
 ### New

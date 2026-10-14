@@ -170,6 +170,60 @@ async function run({ win, app, calls }) {
       await waitFor(`return document.querySelectorAll('#achievementsList .achRow').length > 0`);
       await shot('02-migrated-sheet');
     }
+    if (SCENARIO === 'tags') {
+      // Needs a library: run the "fresh" scenario first with the same PP_USER_DATA.
+      await waitFor(`return PP.state.library.length > 0`);
+      await sleep(1500);
+      await click('.card[data-appid="367520"]');
+      await waitFor(`return document.querySelectorAll('#achievementsList .achRow.locked').length > 3`);
+      const row = `document.querySelectorAll('#achievementsList .achRow.locked')[1]`;
+      await js(`${row}.querySelector('[data-ach-act="tags"]').click()`);
+      await js(`${row}.querySelector('[data-tag="bugged"]').click()`);
+      await sleep(300);
+      // Inline creation: open the form, type, press Enter (must not close the sheet).
+      await js(`${row}.querySelector('[data-new-tag]').click()`);
+      await js(`const r=${row}; r.querySelector('[data-new-tag-icon]').value='📅'; const n=r.querySelector('[data-new-tag-name]'); n.value='Por fecha'; n.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));`);
+      await waitFor(`return PP.tags.all().length === 7`);
+      await sleep(500);
+      log('sheet still open', await js(`return document.getElementById('editModal').open`));
+      await shot('01-inline-tag');
+      log('row tags', await js(`return [...${row}.querySelectorAll('.achBadges .achBadge')].map(b=>b.textContent.trim()).join(' | ')`));
+      log('filter options', await js(`return [...document.querySelectorAll('#achFilter option')].map(o=>o.value).join(',')`));
+      await js(`const f=document.getElementById('achFilter'); f.value=f.querySelector('optgroup[data-custom-tags] option').value; f.dispatchEvent(new Event('change'));`);
+      await sleep(300);
+      log('filtered rows', await js(`return document.querySelectorAll('#achievementsList .achRow').length`));
+      await js(`const f=document.getElementById('achFilter'); f.value='tag:bugged'; f.dispatchEvent(new Event('change'));`);
+      await sleep(300);
+      log('bugged rows', await js(`return document.querySelectorAll('#achievementsList .achRow').length`));
+      await shot('02-filter-bugged');
+      // Manager from the picker: create another, rename the first, delete the second.
+      await js(`const f=document.getElementById('achFilter'); f.value='all'; f.dispatchEvent(new Event('change'));`);
+      await js(`${row}.querySelector('[data-ach-act="tags"]').click()`);
+      await js(`${row}.querySelector('[data-manage-tags]').click()`);
+      await waitFor(`return document.getElementById('tagsModal').open`);
+      await js(`document.querySelector('#tagSuggestions [data-emoji]').click(); document.getElementById('newTagName').value='Con guía'; document.getElementById('addTagBtn').click();`);
+      await waitFor(`return document.querySelectorAll('#tagsList .tagRow').length === 2`);
+      await js(`const i=document.querySelector('#tagsList .tagRow [data-tag-field="name"]'); i.value='Fecha especial'; i.dispatchEvent(new Event('change',{bubbles:true}));`);
+      await sleep(600);
+      await shot('03-manager');
+      log('manager rows', await js(`return [...document.querySelectorAll('#tagsList .tagRow')].map(r=>r.querySelector('[data-tag-field="icon"]').value+' '+r.querySelector('[data-tag-field="name"]').value+' ('+r.querySelector('.tagUses').textContent+')').join(' | ')`));
+      await js(`document.querySelectorAll('#tagsList [data-tag-delete]')[1].click()`);
+      await waitFor(`return document.getElementById('confirmModal').open`);
+      await shot('04-delete-confirm');
+      await js(`document.getElementById('confirmOk').click()`);
+      await waitFor(`return document.querySelectorAll('#tagsList .tagRow').length === 1`);
+      await js(`document.querySelector('#tagsModal [value="cancel"]').click()`);
+      await sleep(500);
+      log('row tags after rename', await js(`return [...${row}.querySelectorAll('.achBadges .achBadge')].map(b=>b.textContent.trim()).join(' | ')`));
+      log('difficulty unchanged', await js(`return PP.gameById(367520).difficultyEstimate ?? PP.gameById(367520).difficulty`));
+      await shot('05-sheet-after');
+      await js(`document.querySelector('#editModal [value="cancel"]').click()`);
+      await sleep(500);
+      await click('#settingsBtn');
+      await waitFor(`return document.getElementById('settingsModal').open`);
+      log('start label', await js(`return document.getElementById('startWithLabel').textContent`));
+      await shot('06-settings');
+    }
   } catch (err) {
     log('E2E FAILED', err.stack);
   }

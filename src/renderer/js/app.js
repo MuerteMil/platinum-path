@@ -180,6 +180,8 @@
       }
     });
     $('dataFolderBtn').addEventListener('click', () => window.api.openDataFolder());
+    // Closing the window keeps the app in the tray; this quits for real (needed where there is no tray icon).
+    $('quitBtn').addEventListener('click', () => window.api.quit());
 
     $('banner').addEventListener('click', async (e) => {
       const b = e.target.closest('[data-upd]');
@@ -205,9 +207,11 @@
 
   async function init() {
     await loadSettings();
+    await PP.tags.load();
     PP.loadPrefs();
     PP.bindCards();
     PP.bindFilters();
+    PP.tags.bind();
     PP.bindEditor();
     PP.bindAddGames();
     PP.bindSettings();

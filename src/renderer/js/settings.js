@@ -64,6 +64,9 @@
     renderSwatches(pendingAccent);
     $('settingsError').hidden = true;
     const info = await window.api.appInfo();
+    const startKey = info && info.platform && info.platform !== 'win32' ? 'settings.startWithSystem' : 'settings.startWithWindows';
+    $('startWithLabel').dataset.i18n = startKey;
+    $('startWithLabel').textContent = t(startKey);
     $('appVersion').textContent = info ? `v${info.version}` : '';
     setUpdateStatus(info && info.update);
     $('settingsModal').showModal();

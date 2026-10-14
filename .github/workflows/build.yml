@@ -1,0 +1,54 @@
+# Builds Platinum Path for Windows and Linux on GitHub's machines.
+#
+# - Manual run (Actions tab → "Build" → "Run workflow"): builds both versions and attaches
+#   the files to the run as downloadable artifacts. Nothing is published.
+# - Pushing a version tag (e.g. v1.5.0): builds both and uploads them to a draft GitHub
+#   release for that version. Review the draft, add the notes and press "Publish".
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: --win --x64
+            files: |
+              dist/*.exe
+              dist/*.zip
+              dist/*.blockmap
+              dist/latest.yml
+          - os: ubuntu-latest
+            target: --linux AppImage deb --x64
+            files: |
+              dist/*.AppImage
+              dist/*.deb
+              dist/latest-linux.yml
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Build
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder ${{ matrix.target }} --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: platinum-path-${{ runner.os }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error

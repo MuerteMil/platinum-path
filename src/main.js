@@ -17,7 +17,10 @@ const START_HIDDEN = process.argv.includes('--hidden');
 let tray = null;
 let quitting = false;
 
-if (process.platform === 'win32') app.setAppUserModelId('com.muertemil.platinumpath');
+// Windows groups taskbar/Start entries by this ID. The dev build (npm start = node_modules\electron\electron.exe)
+// must use a different one: if both share it, a pin made while testing points to the bare electron.exe and
+// clicking it opens the default Electron window instead of the installed app.
+if (process.platform === 'win32') app.setAppUserModelId(app.isPackaged ? 'com.muertemil.platinumpath' : 'com.muertemil.platinumpath.dev');
 
 // Development-only hooks (ignored in the packaged app): isolated data folder and simulated Steam API.
 if (!app.isPackaged && process.env.PP_USER_DATA) app.setPath('userData', process.env.PP_USER_DATA);
@@ -95,7 +98,7 @@ function createWindow(forceShow = false) {
     minHeight: 600,
     show: false,
     backgroundColor: '#0e1116',
-    icon: path.join(__dirname, 'assets', 'icon.ico'),
+    icon: path.join(__dirname, 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -177,9 +180,36 @@ function trayHint() {
 }
 
 function applyLoginItem() {
-  if (process.platform !== 'win32' && process.platform !== 'darwin') return;
   if (!app.isPackaged) return;
-  try { app.setLoginItemSettings({ openAtLogin: !!data.getSettings().startWithWindows, args: ['--hidden'] }); } catch {}
+  const enabled = !!data.getSettings().startWithWindows;
+  if (process.platform === 'linux') { applyLinuxAutostart(enabled); return; }
+  if (process.platform !== 'win32' && process.platform !== 'darwin') return;
+  try { app.setLoginItemSettings({ openAtLogin: enabled, args: ['--hidden'] }); } catch {}
+}
+
+// Linux has no login-item API in Electron: use an XDG autostart entry (~/.config/autostart).
+function applyLinuxAutostart(enabled) {
+  try {
+    const dir = path.join(process.env.XDG_CONFIG_HOME || path.join(require('os').homedir(), '.config'), 'autostart');
+    const file = path.join(dir, 'platinum-path.desktop');
+    if (!enabled) { if (fs.existsSync(file)) fs.unlinkSync(file); return; }
+    // AppImage: point to the .AppImage file itself (process.execPath is a temporary mount).
+    const exe = process.env.APPIMAGE || process.execPath;
+    const quoted = '"' + exe.replace(/(["`$\\])/g, '\\$1') + '"';
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(file, [
+      '[Desktop Entry]',
+      'Type=Application',
+      'Name=Platinum Path',
+      `Exec=${quoted} --hidden`,
+      'Icon=platinum-path',
+      'Terminal=false',
+      'X-GNOME-Autostart-enabled=true',
+      ''
+    ].join('\n'), 'utf-8');
+  } catch (err) {
+    console.error('[autostart] failed:', err);
+  }
 }
 
 // ---------- lifecycle ----------
@@ -217,7 +247,8 @@ const handle = (ch, fn) => ipcMain.handle(ch, async (_e, ...args) => {
   }
 });
 
-handle('app:info', () => ({ version: app.getVersion(), encryption: data.canEncrypt(), update: updater.getState() }));
+handle('app:info', () => ({ version: app.getVersion(), encryption: data.canEncrypt(), update: updater.getState(), platform: process.platform }));
+handle('app:quit', () => { quitting = true; setTimeout(() => app.quit(), 50); return { ok: true }; });
 handle('app:openDataFolder', () => shell.openPath(app.getPath('userData')).then(() => ({ ok: true })));
 handle('shell:openExternal', (url) => ({ ok: openExternalSafe(url) }));
 
@@ -327,6 +358,12 @@ handle('achievements:update', (appid, apiName, patch) => {
   const a = data.updateAchievementUserData(appid, apiName, patch);
   return a ? { ok: true } : { ok: false, error: 'not_found' };
 });
+
+// Custom achievement tags (built-in ones live in the renderer).
+handle('tags:list', () => ({ ok: true, tags: data.getCustomTags(), usage: data.tagUsage() }));
+handle('tags:create', (tag = {}) => data.createCustomTag(tag));
+handle('tags:update', (id, patch = {}) => data.updateCustomTag(String(id || ''), patch));
+handle('tags:delete', (id) => data.deleteCustomTag(String(id || '')));
 
 handle('stats:get', () => {
   const games = data.getGames();

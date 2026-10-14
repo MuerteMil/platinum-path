@@ -6,6 +6,7 @@ const EVENTS = ['sync:start', 'sync:progress', 'sync:done', 'library:changed', '
 contextBridge.exposeInMainWorld('api', {
   appInfo: () => ipcRenderer.invoke('app:info'),
   openDataFolder: () => ipcRenderer.invoke('app:openDataFolder'),
+  quit: () => ipcRenderer.invoke('app:quit'),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 
   getSettings: () => ipcRenderer.invoke('settings:get'),
@@ -24,6 +25,10 @@ contextBridge.exposeInMainWorld('api', {
 
   achievements: (appid, opts) => ipcRenderer.invoke('achievements:get', appid, opts),
   updateAchievement: (appid, apiName, patch) => ipcRenderer.invoke('achievements:update', appid, apiName, patch),
+  customTags: () => ipcRenderer.invoke('tags:list'),
+  createTag: (tag) => ipcRenderer.invoke('tags:create', tag),
+  updateTag: (id, patch) => ipcRenderer.invoke('tags:update', id, patch),
+  deleteTag: (id) => ipcRenderer.invoke('tags:delete', id),
   stats: () => ipcRenderer.invoke('stats:get'),
 
   exportBackup: () => ipcRenderer.invoke('backup:export'),

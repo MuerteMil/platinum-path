@@ -40,9 +40,11 @@
       <div class="menu up" id="moreMenu" role="menu" hidden>
         <button type="button" role="menuitem" id="exportBtn" data-i18n="backup.export"></button>
         <button type="button" role="menuitem" id="importBtn" data-i18n="backup.import"></button>
+        <button type="button" role="menuitem" id="manageTagsBtn" data-i18n="tags.manage"></button>
         <button type="button" role="menuitem" id="hltbAllBtn" data-i18n="more.hltbAll"></button>
         <button type="button" role="menuitem" id="dataFolderBtn" data-i18n="more.dataFolder"></button>
         <button type="button" role="menuitem" id="wizardOpenFromMenu" data-i18n="more.wizard"></button>
+        <button type="button" role="menuitem" id="quitBtn" data-i18n="more.quit"></button>
       </div>
     </div>
   </div>
@@ -153,9 +155,13 @@
         <div class="full">
           <label class="check"><input type="checkbox" id="notifications"/> <span data-i18n="settings.notifications"></span></label>
           <label class="check"><input type="checkbox" id="closeToTray"/> <span data-i18n="settings.closeToTray"></span></label>
-          <label class="check"><input type="checkbox" id="startWithWindows"/> <span data-i18n="settings.startWithWindows"></span></label>
+          <label class="check"><input type="checkbox" id="startWithWindows"/> <span id="startWithLabel" data-i18n="settings.startWithWindows"></span></label>
           <label class="check"><input type="checkbox" id="hltbEnabled"/> <span data-i18n="settings.hltbEnabled"></span></label>
           <div class="muted hint" data-i18n="settings.hltbHint"></div>
+        </div>
+        <div class="full">
+          <label data-i18n="ach.tags"></label>
+          <button class="btn small" id="manageTagsFromSettings" type="button" data-i18n="tags.manage"></button>
         </div>
         <div class="full">
           <label data-i18n="settings.color"></label>
@@ -253,6 +259,7 @@
             <option value="tag:coop" data-i18n="tag.coop"></option>
             <option value="tag:grind" data-i18n="tag.grind"></option>
             <option value="tag:hard" data-i18n="tag.hard"></option>
+            <option value="tag:bugged" data-i18n="tag.bugged"></option>
             <option value="hidden" data-i18n="ach.f.hidden"></option>
             <option value="noted" data-i18n="ach.f.noted"></option>
           </select>
@@ -387,7 +394,7 @@
         <label for="wizardKey" class="wLabel" data-i18n="settings.apiKey"></label>
         <input id="wizardKey" type="password" autocomplete="off" spellcheck="false"/>
         <div class="muted hint" id="wizardKeySaved" data-i18n="wizard.keySaved" hidden></div>
-        <div class="muted hint" data-i18n="wizard.keyPrivacy"></div>
+        <div class="muted hint" id="wizardKeyPrivacy" data-i18n="wizard.keyPrivacy"></div>
       </section>
 
       <section data-wstep="profile" hidden>
@@ -414,6 +421,33 @@
   </form>
 </dialog>
 
+<!-- Achievement tags -->
+<dialog id="tagsModal">
+  <form method="dialog">
+    <div class="modalHead"><b data-i18n="tags.title"></b><button class="iconbtn" value="cancel" type="submit" data-i18n-aria-label="common.close">✕</button></div>
+    <div class="modalBody">
+      <p class="muted tagsIntro" data-i18n="tags.intro"></p>
+      <div class="tagsSection">
+        <label data-i18n="tags.builtin"></label>
+        <div class="achBadges" id="tagsBuiltin"></div>
+      </div>
+      <div class="tagsSection">
+        <label data-i18n="tags.custom"></label>
+        <div id="tagsList"></div>
+      </div>
+      <div class="tagsSection newTagRow">
+        <div class="row">
+          <input type="text" id="newTagIcon" class="tagIconInput" maxlength="16" data-i18n-placeholder="tags.iconPh" data-i18n-title="tags.iconTitle" aria-label="Emoji"/>
+          <input type="text" id="newTagName" class="grow" maxlength="24" data-i18n-placeholder="tags.namePh"/>
+          <button class="btn primary" id="addTagBtn" type="button" data-i18n="tags.add"></button>
+        </div>
+        <div class="row emojiRow"><span class="muted" data-i18n="tags.suggestions"></span><span id="tagSuggestions"></span></div>
+      </div>
+    </div>
+    <div class="modalFoot"><span></span><div class="row"><button class="btn" value="cancel" type="submit" data-i18n="common.close"></button></div></div>
+  </form>
+</dialog>
+
 <!-- Confirm -->
 <dialog id="confirmModal" class="small">
   <form method="dialog">
@@ -429,6 +463,7 @@
 <script src="./js/cards.js"></script>
 <script src="./js/listView.js"></script>
 <script src="./js/filters.js"></script>
+<script src="./js/tags.js"></script>
 <script src="./js/editor.js"></script>
 <script src="./js/addGames.js"></script>
 <script src="./js/settings.js"></script>

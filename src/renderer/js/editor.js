@@ -3,8 +3,7 @@
   const { t, $, escapeHtml, safeUrl, fmtDate, fmtNum, timeAgo } = PP;
   const L = PP.logic;
 
-  const TAGS = ['missable', 'online', 'coop', 'grind', 'hard'];
-  const TAG_ICON = { missable: '⚠', online: '🌐', coop: '👥', grind: '🔁', hard: '💀' };
+  const TAGS = PP.tags; // built-in + custom achievement tags (tags.js)
 
   let current = null;       // appid being edited
   let achievements = [];
@@ -28,7 +27,7 @@
   function tagsOf(a) {
     const set = new Set(Array.isArray(a.tags) ? a.tags : []);
     if (a.missable) set.add('missable');
-    return TAGS.filter(x => set.has(x));
+    return TAGS.all().filter(x => set.has(x));
   }
 
   function fillSuggestions() {
@@ -165,6 +164,7 @@
     current = Number(appid);
     const seq = ++openSeq;
     fillSuggestions();
+    TAGS.fillFilterSelect($('achFilter'));
     renderHero(g);
     fillForm(g);
     switchTab(tab);
@@ -268,10 +268,17 @@
       : `<span class="achBadge locked">${escapeHtml(t('ach.locked'))}</span>`);
     if (a.globalPct != null) badges.push(`<span class="achBadge ${rarityClass(a.globalPct)}">${escapeHtml(t('ach.global', { p: fmtNum(a.globalPct, 1) }))}</span>`);
     if (a.hidden) badges.push(`<span class="achBadge hid">${escapeHtml(t('ach.hidden'))}</span>`);
-    for (const tg of tags) badges.push(`<span class="achBadge tag-${tg}">${TAG_ICON[tg]} ${escapeHtml(t(`tag.${tg}`))}</span>`);
+    for (const tg of tags) badges.push(TAGS.badgeHTML(tg));
     if (a.existsInCurrentSteamData === false) badges.push(`<span class="achBadge">${escapeHtml(t('ach.removed'))}</span>`);
     const api = escapeHtml(a.achievementApiName);
-    const tagPicker = TAGS.map(tg => `<button type="button" class="tagToggle ${tags.includes(tg) ? 'on' : ''} tag-${tg}" data-tag="${tg}">${TAG_ICON[tg]} ${escapeHtml(t(`tag.${tg}`))}</button>`).join('');
+    const tagPicker = TAGS.all().map(tg => TAGS.toggleHTML(tg, tags.includes(tg))).join('') +
+      `<button type="button" class="tagToggle addTag" data-new-tag title="${escapeHtml(t('tags.newTitle'))}">＋ ${escapeHtml(t('tags.new'))}</button>` +
+      `<button type="button" class="tagToggle manageTag" data-manage-tags title="${escapeHtml(t('tags.manage'))}" aria-label="${escapeHtml(t('tags.manage'))}">⚙</button>` +
+      `<span class="newTagForm" hidden>
+        <input type="text" class="tagIconInput" data-new-tag-icon maxlength="16" placeholder="${escapeHtml(t('tags.iconPh'))}" title="${escapeHtml(t('tags.iconTitle'))}" aria-label="Emoji"/>
+        <input type="text" data-new-tag-name maxlength="24" placeholder="${escapeHtml(t('tags.namePh'))}" aria-label="${escapeHtml(t('tags.namePh'))}"/>
+        <button type="button" class="btn small primary" data-new-tag-save>${escapeHtml(t('tags.create'))}</button>
+      </span>`;
     return `
       <div class="achRow ${a.unlocked ? 'unlocked' : 'locked'} ${isNext ? 'next' : ''}" data-api="${api}">
         <img class="achIcon ${!a.unlocked && !a.localGrayIconUrl && !a.iconGrayUrl ? 'noGray' : ''}" src="${icon}" ${fallback && fallback !== icon ? `data-fallback="${fallback}"` : ''} alt="" loading="lazy"/>
@@ -296,6 +303,30 @@
     Object.assign(a, patch);
     if (patch.tags) a.missable = patch.tags.includes('missable');
     await window.api.updateAchievement(current, apiName, patch);
+  }
+
+  function reopenPicker(api) {
+    const box = $('editModal').querySelector(`.achRow[data-api="${CSS.escape(api)}"] .achTagPicker`);
+    if (box) box.hidden = false; // keep the picker open after re-rendering
+    return box;
+  }
+
+  // Creates a custom tag from the inline form of an achievement and applies it to that achievement.
+  async function createTagFor(row) {
+    const api = row.dataset.api;
+    const nameEl = row.querySelector('[data-new-tag-name]');
+    const iconEl = row.querySelector('[data-new-tag-icon]');
+    if (!nameEl.value.trim()) { nameEl.focus(); return; }
+    const tag = await TAGS.create(nameEl.value, iconEl.value);
+    if (!tag) { nameEl.focus(); return; }
+    const a = achievements.find(x => x.achievementApiName === api);
+    if (a) {
+      const set = new Set(tagsOf(a));
+      set.add(tag.id);
+      await updateAch(api, { tags: TAGS.all().filter(x => set.has(x)) });
+    }
+    renderAchievements();
+    reopenPicker(api);
   }
 
   // ---------- save / delete ----------
@@ -404,12 +435,21 @@
         if (!a) return;
         const set = new Set(tagsOf(a));
         if (set.has(tagBtn.dataset.tag)) set.delete(tagBtn.dataset.tag); else set.add(tagBtn.dataset.tag);
-        await updateAch(api, { tags: TAGS.filter(x => set.has(x)) });
+        await updateAch(api, { tags: TAGS.all().filter(x => set.has(x)) });
         renderAchievements();
-        const row = $('editModal').querySelector(`.achRow[data-api="${CSS.escape(api)}"] .achTagPicker`);
-        if (row) row.hidden = false; // keep the picker open
+        reopenPicker(api);
         return;
       }
+      if (e.target.closest('[data-manage-tags]')) { TAGS.openManager(); return; }
+      const newBtn = e.target.closest('[data-new-tag]');
+      if (newBtn) {
+        const form = newBtn.parentElement.querySelector('.newTagForm');
+        form.hidden = !form.hidden;
+        if (!form.hidden) form.querySelector('[data-new-tag-name]').focus();
+        return;
+      }
+      const saveBtn = e.target.closest('[data-new-tag-save]');
+      if (saveBtn) { await createTagFor(saveBtn.closest('.achRow')); return; }
       const btn = e.target.closest('[data-ach-act]');
       if (!btn) return;
       const row = btn.closest('.achRow');
@@ -417,6 +457,23 @@
       const box = row.querySelector(btn.dataset.achAct === 'tags' ? '.achTagPicker' : '.achNoteEdit');
       box.hidden = !box.hidden;
       if (!box.hidden && btn.dataset.achAct === 'note') box.querySelector('textarea').focus();
+    });
+    panel.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const inp = e.target.closest && e.target.closest('[data-new-tag-name], [data-new-tag-icon]');
+      if (!inp) return;
+      e.preventDefault();
+      createTagFor(inp.closest('.achRow'));
+    });
+    // Custom tags renamed/deleted elsewhere: refresh the filter and the list.
+    TAGS.onChange(() => {
+      TAGS.fillFilterSelect($('achFilter'));
+      if ($('editModal').open) {
+        const openPicker = panel.querySelector('.achTagPicker:not([hidden])');
+        const api = openPicker && openPicker.closest('.achRow').dataset.api;
+        renderAchievements();
+        if (api) reopenPicker(api);
+      }
     });
     panel.addEventListener('focusout', async (e) => {
       const ta = e.target.closest && e.target.closest('textarea[data-ach-note]');

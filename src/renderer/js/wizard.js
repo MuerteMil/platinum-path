@@ -128,6 +128,12 @@
     $('wizardProfile').value = s.steamId || '';
     $('wizardLanguage').value = PP.getLang();
     $('wizardCheck').innerHTML = '';
+    // Without OS encryption (e.g. Linux with no keyring) do not claim the key is encrypted.
+    window.api.appInfo().then(info => {
+      const key = info && info.encryption === false ? 'wizard.keyPrivacyPlain' : 'wizard.keyPrivacy';
+      $('wizardKeyPrivacy').dataset.i18n = key;
+      $('wizardKeyPrivacy').textContent = t(key);
+    }).catch(() => {});
     render();
     if (!$('wizardModal').open) $('wizardModal').showModal();
     if (step === 2) { $('wizardNext').focus(); runCheck(); }

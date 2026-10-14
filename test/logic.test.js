@@ -291,3 +291,52 @@ test('achievement icons use Steam\'s current image host, with fallbacks', () => 
   assert.deepStrictEqual(steam.iconCandidates('https://steamcdn-a.akamaihd.net/steamcommunity/public/images/apps/367520/'), []);
   assert.strictEqual(steam.normalizeIconUrl(steam.normalizeIconUrl(old)), steam.normalizeIconUrl(old));
 });
+
+test('custom achievement tags: create, reuse, rename, delete and backup', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-'));
+  delete require.cache[require.resolve('../src/main/data')];
+  const data = require('../src/main/data');
+  data.init({ userData: dir, safeStorage: null });
+  data.createGame(7, { name: 'G' });
+  data.setAchGame(7, { meta: { schemaAt: 1 }, list: { A: { achievementApiName: 'A' }, B: { achievementApiName: 'B' } } });
+
+  // 'bugged' is a built-in tag and changes nothing else.
+  data.updateAchievementUserData(7, 'A', { tags: ['bugged'] });
+  assert.deepStrictEqual(data.getAchGame(7).list.A.tags, ['bugged']);
+  assert.strictEqual(data.getAchGame(7).list.A.missable, false);
+
+  const c = data.createCustomTag({ name: '  Por   fecha ', icon: '📅 extra' });
+  assert.ok(c.ok);
+  assert.match(c.tag.id, /^c_[a-z0-9]+$/);
+  assert.strictEqual(c.tag.name, 'Por fecha');
+  assert.strictEqual(c.tag.icon, '📅');
+  assert.strictEqual(data.createCustomTag({ name: 'por FECHA' }).tag.id, c.tag.id, 'same name is reused');
+  assert.strictEqual(data.createCustomTag({ name: '   ' }).error, 'tag_name_required');
+  assert.strictEqual(data.createCustomTag({ name: 'Sin icono' }).tag.icon, '🏷️');
+
+  data.updateAchievementUserData(7, 'A', { tags: ['bugged', c.tag.id, 'c_doesnotexist'] });
+  data.updateAchievementUserData(7, 'B', { tags: [c.tag.id] });
+  assert.deepStrictEqual(data.getAchGame(7).list.A.tags, ['bugged', c.tag.id]);
+  assert.strictEqual(data.tagUsage()[c.tag.id], 2);
+
+  assert.strictEqual(data.updateCustomTag(c.tag.id, { name: 'Sin icono' }).error, 'tag_exists');
+  assert.ok(data.updateCustomTag(c.tag.id, { name: 'Fecha', icon: '⏰' }).ok);
+  assert.deepStrictEqual(data.getCustomTags().find(t => t.id === c.tag.id), { id: c.tag.id, name: 'Fecha', icon: '⏰' });
+
+  // Backups carry the custom tags.
+  const payload = JSON.parse(JSON.stringify(data.exportPayload()));
+  assert.strictEqual(payload.customTags.length, 2);
+
+  const del = data.deleteCustomTag(c.tag.id);
+  assert.deepStrictEqual(del, { ok: true, removed: 2 });
+  assert.deepStrictEqual(data.getAchGame(7).list.A.tags, ['bugged']);
+  assert.deepStrictEqual(data.getAchGame(7).list.B.tags, []);
+
+  const parsed = data.parseBackup(payload);
+  assert.ok(parsed.ok);
+  parsed.apply();
+  assert.strictEqual(data.getCustomTags().length, 2);
+  assert.deepStrictEqual(data.getAchGame(7).list.A.tags, ['bugged', c.tag.id]);
+  // Invalid entries in a backup are dropped.
+  assert.deepStrictEqual(data.sanitizeCustomTags([{ id: 'bad id', name: 'x' }, { id: 'c_abcd1234', name: '' }, null]), []);
+});

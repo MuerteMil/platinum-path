@@ -18,6 +18,8 @@ function setState(s) { state = s; emit('update:status', s); }
 function getState() { return state; }
 
 function isInstalledBuild() {
+  // Linux: only the AppImage can update itself; .deb installs get a link to the release instead.
+  if (process.platform === 'linux' && !process.env.APPIMAGE) return false;
   try { return app.isPackaged && fs.existsSync(path.join(process.resourcesPath, 'app-update.yml')); } catch { return false; }
 }
 

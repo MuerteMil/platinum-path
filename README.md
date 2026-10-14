@@ -19,18 +19,26 @@ It is built as a **100% local, offline-first tool**, giving you full control ove
 - Quick links: play, store page, Steam achievements, guides
 - Ratings, notes, status, manual hours and genres
 - Backups (export / import) — your API key is never included
-- Now playing detection, platinum showcase (export as image), collections, achievement tags, ignored games
+- Now playing detection, platinum showcase (export as image), collections, ignored games
+- Achievement tags (missable, online, co-op, grindy, hard, bugged) plus **your own custom tags**, with filters
 - HowLongToBeat time to 100% (unofficial), list view, system tray, 100% celebration
 - Monthly / yearly recap, shareable as an image
 - Setup assistant on first run (API key, profile and privacy check)
 - Spanish / English interface
-- Fully local storage (no accounts, no cloud). API key encrypted with Windows (DPAPI)
+- Fully local storage (no accounts, no cloud). API key encrypted by the operating system (Windows DPAPI, or GNOME Keyring / KWallet on Linux)
 
 ---
 
 ## 🖥️ Platform
 
 - **Windows** (installer or portable ZIP)
+- **Linux** (AppImage or .deb), including **Steam Deck** in desktop mode
+
+### Linux / Steam Deck
+
+- **AppImage** (any distro, updates itself): download `Platinum-Path-x.y.z-x86_64.AppImage`, make it executable (right click → Properties → *Allow executing file as program*, or `chmod +x`) and open it. On Steam Deck, do this in Desktop Mode; you can then add it to Steam as a non-Steam game.
+- **.deb** (Debian, Ubuntu, Mint, Pop!_OS…): `sudo apt install ./Platinum-Path-x.y.z-amd64.deb`. Updates are announced in the app with a link to the new version.
+- The system tray icon needs tray support: KDE (and Steam Deck desktop mode) has it built in; GNOME needs the *AppIndicator* extension. Without it, use ⋯ → *Quit Platinum Path* to close the app completely.
 
 ---
 
@@ -49,7 +57,7 @@ It is built as a **100% local, offline-first tool**, giving you full control ove
 
 ## 💾 Data & Privacy
 
-- All data is stored **locally on your computer** (`%APPDATA%\platinum-path`, open it from the ⋯ menu)
+- All data is stored **locally on your computer** (Windows: `%APPDATA%\platinum-path`, Linux: `~/.config/platinum-path`; open it from the ⋯ menu)
 - No analytics, tracking, or external servers
 - You fully own your data
 
@@ -99,8 +107,14 @@ npm install
 npm start          # run the app
 npm test           # unit tests (logic, data migration)
 npm run dist       # build installer + portable ZIP into dist/
+npm run dist:linux # build AppImage + .deb into dist/ (run on Linux)
 npm run release    # build and publish to GitHub Releases (needs GH_TOKEN)
 ```
+
+**GitHub Actions** (`.github/workflows/build.yml`) builds both Windows and Linux on GitHub's machines, so no Linux computer is needed:
+
+- *Actions → Build → Run workflow*: builds both and attaches the files to the run (nothing is published).
+- Pushing a tag such as `v1.5.0`: builds both and uploads them to a draft release for that version.
 
 On Windows you can also double-click **Run app.bat** (installs dependencies the first time and starts the app) or **Build installer.bat** (creates the installer and portable ZIP in `dist/`).
 
@@ -133,18 +147,26 @@ Está diseñada como una herramienta **100% local**, sin cuentas, sin suscripcio
 - Accesos rápidos: jugar, tienda, logros en Steam y guías
 - Puntuaciones, notas, estado, horas manuales y géneros
 - Copias de seguridad (exportar / importar) — tu API key nunca se incluye
-- Juego en curso detectado, vitrina de platinos (exportable como imagen), colecciones, etiquetas de logros, juegos ignorados
+- Juego en curso detectado, vitrina de platinos (exportable como imagen), colecciones, juegos ignorados
+- Etiquetas de logros (perdible, online, cooperativo, repetitivo, difícil, bugueado) y **etiquetas personalizadas**, con filtros
 - Tiempo para el 100% de HowLongToBeat (no oficial), vista de lista, bandeja del sistema y celebración al 100%
 - Resumen mensual / anual, exportable como imagen
 - Asistente de configuración al primer inicio (API key, perfil y comprobación de privacidad)
 - Interfaz en español e inglés
-- Almacenamiento 100% local. La API key se guarda cifrada por Windows (DPAPI)
+- Almacenamiento 100% local. La API key se guarda cifrada por el sistema (DPAPI en Windows, GNOME Keyring / KWallet en Linux)
 
 ---
 
 ## 🖥️ Plataforma
 
 - **Windows** (instalador o ZIP portable)
+- **Linux** (AppImage o .deb), también **Steam Deck** en modo escritorio
+
+### Linux / Steam Deck
+
+- **AppImage** (cualquier distribución, se actualiza sola): descarga `Platinum-Path-x.y.z-x86_64.AppImage`, dale permiso de ejecución (clic derecho → Propiedades → *Permitir ejecutar como programa*, o `chmod +x`) y ábrelo. En Steam Deck, hazlo en el modo escritorio; después puedes añadirlo a Steam como juego externo.
+- **.deb** (Debian, Ubuntu, Mint, Pop!_OS…): `sudo apt install ./Platinum-Path-x.y.z-amd64.deb`. Las actualizaciones se avisan en la app con un enlace a la nueva versión.
+- El icono de la bandeja necesita soporte de bandeja del sistema: KDE (y el modo escritorio de Steam Deck) lo tiene; GNOME necesita la extensión *AppIndicator*. Sin ella, usa ⋯ → *Salir de Platinum Path* para cerrar la app del todo.
 
 ---
 
@@ -163,7 +185,7 @@ Está diseñada como una herramienta **100% local**, sin cuentas, sin suscripcio
 
 ## 💾 Datos y privacidad
 
-- Todos los datos se guardan **en tu propio ordenador** (`%APPDATA%\platinum-path`, se abre desde el menú ⋯)
+- Todos los datos se guardan **en tu propio ordenador** (Windows: `%APPDATA%\platinum-path`, Linux: `~/.config/platinum-path`; se abre desde el menú ⋯)
 - No se recopila ningún tipo de información
 - No hay servidores externos
 

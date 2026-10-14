@@ -1,6 +1,6 @@
 {
   "name": "platinum-path",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Local game library with Steam sync (playtime & achievements) and estimated completion difficulty",
   "author": "MuerteMil",
   "license": "MIT",
@@ -13,9 +13,9 @@
     "start": "electron .",
     "test": "node --test test/*.test.js",
     "dist": "electron-builder --win --x64",
-    "dist:linux": "electron-builder --linux AppImage",
-    "dist:linux:deb": "electron-builder --linux deb",
-    "release": "electron-builder --win --x64 --publish always"
+    "dist:linux": "electron-builder --linux AppImage deb --x64",
+    "release": "electron-builder --win --x64 --publish always",
+    "release:linux": "electron-builder --linux AppImage deb --x64 --publish always"
   },
   "dependencies": {
     "electron-updater": "^6.8.9"
@@ -48,8 +48,22 @@
       "artifactName": "Platinum-Path-Setup-${version}.${ext}"
     },
     "linux": {
-      "icon": "src/assets/icon.png",
-      "category": "Game"
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "build/icons",
+      "category": "Game",
+      "executableName": "platinum-path",
+      "synopsis": "Steam achievement and 100% completion tracker",
+      "maintainer": "MuerteMil <https://github.com/MuerteMil/platinum-path>",
+      "artifactName": "Platinum-Path-${version}-${arch}.${ext}",
+      "desktop": {
+        "entry": {
+          "Keywords": "steam;achievements;trophies;completion;"
+        }
+      },
+      "syncDesktopName": true
     },
     "publish": [
       {
@@ -58,5 +72,7 @@
         "repo": "platinum-path"
       }
     ]
-  }
+  },
+  "homepage": "https://github.com/MuerteMil/platinum-path",
+  "desktopName": "platinum-path.desktop"
 }
