@@ -69,7 +69,8 @@
       {
         "provider": "github",
         "owner": "MuerteMil",
-        "repo": "platinum-path"
+        "repo": "platinum-path",
+        "vPrefixedTagName": false
       }
     ]
   },

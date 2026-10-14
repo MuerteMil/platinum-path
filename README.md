@@ -114,7 +114,7 @@ npm run release    # build and publish to GitHub Releases (needs GH_TOKEN)
 **GitHub Actions** (`.github/workflows/build.yml`) builds both Windows and Linux on GitHub's machines, so no Linux computer is needed:
 
 - *Actions → Build → Run workflow*: builds both and attaches the files to the run (nothing is published).
-- Pushing a tag such as `v1.5.0`: builds both and uploads them to a draft release for that version.
+- Pushing a tag with the version number (e.g. `1.5.0`): builds both and uploads them to a draft release for that version.
 
 On Windows you can also double-click **Run app.bat** (installs dependencies the first time and starts the app) or **Build installer.bat** (creates the installer and portable ZIP in `dist/`).
 

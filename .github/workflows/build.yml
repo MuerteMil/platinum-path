@@ -2,14 +2,14 @@
 #
 # - Manual run (Actions tab → "Build" → "Run workflow"): builds both versions and attaches
 #   the files to the run as downloadable artifacts. Nothing is published.
-# - Pushing a version tag (e.g. v1.5.0): builds both and uploads them to a draft GitHub
-#   release for that version. Review the draft, add the notes and press "Publish".
+# - Pushing a version tag (e.g. 1.5.0, same as package.json): builds both and uploads them
+#   to a draft GitHub release for that version. Review the draft, add the notes and press "Publish".
 name: Build
 
 on:
   workflow_dispatch:
   push:
-    tags: ['v*']
+    tags: ['[0-9]*', 'v*']
 
 permissions:
   contents: write
@@ -46,7 +46,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder ${{ matrix.target }} --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+        run: npx electron-builder ${{ matrix.target }} --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
       - uses: actions/upload-artifact@v4
         with:
           name: platinum-path-${{ runner.os }}
