@@ -1,13 +1,19 @@
 # Builds Platinum Path for Windows and Linux on GitHub's machines.
 #
 # - Manual run (Actions tab → "Build" → "Run workflow"): builds both versions and attaches
-#   the files to the run as downloadable artifacts. Nothing is published.
+#   the files to the run as downloadable artifacts. Tick "draft release" to also upload them
+#   to a draft release for the version in package.json (the tag is created when you publish it).
 # - Pushing a version tag (e.g. 1.5.0, same as package.json): builds both and uploads them
 #   to a draft GitHub release for that version. Review the draft, add the notes and press "Publish".
 name: Build
 
 on:
   workflow_dispatch:
+    inputs:
+      draft_release:
+        description: Also upload the files to a draft GitHub release
+        type: boolean
+        default: false
   push:
     tags: ['[0-9]*', 'v*']
 
@@ -46,7 +52,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder ${{ matrix.target }} --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
+        run: npx electron-builder ${{ matrix.target }} --publish ${{ (startsWith(github.ref, 'refs/tags/') || inputs.draft_release) && 'always' || 'never' }}
       - uses: actions/upload-artifact@v4
         with:
           name: platinum-path-${{ runner.os }}
