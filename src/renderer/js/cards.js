@@ -3,7 +3,7 @@
   const { t, $, escapeHtml, safeUrl, fmtNum, timeAgo } = PP;
   const L = PP.logic;
 
-  function statusLabel(code) { return code ? t(`status.${code}`) : ''; }
+  function statusLabel(code) { return code ? t(`statusOne.${code}`) : ''; }
 
   function diffText(g) {
     const d = L.effectiveDifficulty(g);
@@ -181,6 +181,7 @@
       if (drag) empty.hidden = true;
     }
     if (drag && list.length) PP.toastOnce('dragHint', t('card.dragHint'));
+    else if (list.length) PP.toastOnce('statusMenuHint', t('statusMenu.hint'));
   }
 
   // ---------- events ----------

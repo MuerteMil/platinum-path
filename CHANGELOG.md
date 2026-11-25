@@ -10,6 +10,7 @@
   - **"Do not count for 100%"** (⊘ button on any achievement), for anything else you want to leave out. It works in any game, with or without sets.
   - A line above the list explains what is not being counted, and the "Not counted for 100%" filter lists those achievements.
 - **"Hidden" achievements are now called "Spoiler"**, as on Steam.
+- **Right-click a game to change its status** (No status, In progress, Possible 100%, On hold), in both the grid and the list view. The menu also opens the game sheet, and works with the keyboard (menu key or Shift+F10, arrows, Enter, Esc). In Spanish, status badges on cards now read in the singular ("Parado" instead of "Parados").
 
 ### Notes
 - Set data comes from the same source as Steam's own achievements page, needs no API key, and is refreshed together with the achievement list. If Steam does not answer, the app keeps working with a single list.

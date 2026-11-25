@@ -526,3 +526,14 @@ dialog.sheet{overflow:hidden}
 /* Three tools side by side so rows keep their height */
 .achTools{flex-direction:row;align-items:flex-start;gap:4px}
 .setCount{font-size:12px;color:var(--muted)}
+
+/* ---------- Right-click status menu (1.6) ---------- */
+.ctxMenu{position:fixed;top:0;left:0;min-width:220px;max-width:300px;z-index:60}
+.ctxMenu button{display:flex;align-items:center;gap:10px;font-size:13.5px}
+.ctxMenu button.on{color:var(--text);background:rgba(var(--accent-rgb),.12)}
+.ctxMenu button:focus-visible{outline:2px solid rgba(var(--accent-rgb),.8);outline-offset:-2px}
+.ctxIcon{width:18px;text-align:center;opacity:.85}
+.ctxCheck{margin-left:auto;color:rgb(var(--accent-rgb));font-weight:700}
+.ctxTitle{padding:7px 12px 2px;font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctxSection{padding:2px 12px 6px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.ctxSep{height:1px;margin:5px 6px;background:var(--border)}

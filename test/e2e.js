@@ -170,6 +170,48 @@ async function run({ win, app, calls }) {
       await waitFor(`return document.querySelectorAll('#achievementsList .achRow').length > 0`);
       await shot('02-migrated-sheet');
     }
+    if (SCENARIO === 'status') {
+      // Needs a library: run the "fresh" scenario first with the same PP_USER_DATA.
+      await waitFor(`return PP.state.library.length > 0`);
+      await sleep(1200);
+      const rightClick = (sel) => js(`const el = document.querySelector('${sel}'); const r = el.getBoundingClientRect(); el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 60, clientY: r.top + 80 })); return true;`);
+      await rightClick('.card[data-appid="367520"]');
+      await waitFor(`return !document.getElementById('statusMenu').hidden`);
+      log('menu', await js(`return [...document.querySelectorAll('#statusMenu button')].map(b => b.textContent.replace(/\s+/g, ' ').trim()).join(' | ')`));
+      log('focus', await js(`return document.activeElement && document.activeElement.textContent.replace(/\s+/g, ' ').trim()`));
+      await shot('01-menu');
+      await js(`document.querySelector('#statusMenu [data-status="paused"]').click()`);
+      await waitFor(`return PP.gameById(367520).status === 'paused'`);
+      await sleep(400);
+      log('after', await js(`return PP.gameById(367520).status + ' | badge: ' + ((document.querySelector('.card[data-appid="367520"] .badge.status-paused') || {}).textContent || 'none') + ' | menu hidden ' + document.getElementById('statusMenu').hidden`));
+      await shot('02-paused');
+      // Sidebar "On hold" view shows it.
+      log('paused view', await js(`return PP.state.library.filter(g => g.status === 'paused').map(g => g.name).join(', ')`));
+      // Escape closes; the editor sees the same status.
+      await rightClick('.card[data-appid="367520"]');
+      await waitFor(`return !document.getElementById('statusMenu').hidden`);
+      await js(`document.querySelector('#statusMenu button').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+      log('escape closes', await js(`return document.getElementById('statusMenu').hidden`));
+      await rightClick('.card[data-appid="367520"]');
+      await waitFor(`return !document.getElementById('statusMenu').hidden`);
+      await js(`document.querySelector('#statusMenu [data-open]').click()`);
+      await waitFor(`return document.getElementById('editModal').open`);
+      log('editor status', await js(`return document.getElementById('editStatus').value`));
+      await js(`document.querySelector('#editModal [value="cancel"]').click()`);
+      await sleep(400);
+      // List view row.
+      await js(`document.querySelector('[data-viewmode="list"]').click()`);
+      await waitFor(`return document.querySelector('#listView tr[data-appid]')`);
+      const rowSel = '#listView tr[data-appid="588650"]';
+      await rightClick(rowSel);
+      await waitFor(`return !document.getElementById('statusMenu').hidden`);
+      await js(`document.querySelector('#statusMenu [data-status="in_progress"]').click()`);
+      await waitFor(`return PP.gameById(588650).status === 'in_progress'`);
+      await sleep(300);
+      log('list row', await js(`return (document.querySelector('${rowSel} .badge.status-in_progress') || {}).textContent || 'none'`));
+      await shot('03-list');
+      await js(`document.querySelector('[data-viewmode="grid"]').click()`);
+    }
     if (SCENARIO === 'sets') {
       // Needs a library: run the "fresh" scenario first with the same PP_USER_DATA.
       await waitFor(`return PP.state.library.length > 0`);

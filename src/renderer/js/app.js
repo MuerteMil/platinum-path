@@ -217,6 +217,7 @@
     PP.bindSettings();
     PP.bindStats();
     PP.bindList();
+    PP.bindStatusMenu();
     PP.bindShowcase();
     PP.bindRecap();
     PP.bindWizard();
