@@ -262,7 +262,9 @@
             <option value="tag:bugged" data-i18n="tag.bugged"></option>
             <option value="hidden" data-i18n="ach.f.hidden"></option>
             <option value="noted" data-i18n="ach.f.noted"></option>
+            <option value="notCounted" data-i18n="ach.f.notCounted"></option>
           </select>
+          <select id="achSet" hidden data-i18n-aria-label="sets.all"></select>
           <select id="achSort">
             <option value="easy" data-i18n="ach.s.easy"></option>
             <option value="rare" data-i18n="ach.s.rare"></option>
@@ -272,6 +274,7 @@
           <input id="achSearch" type="search" data-i18n-placeholder="ach.searchPh" class="grow"/>
           <button class="btn small" id="achRefreshBtn" type="button" data-i18n="ach.refresh"></button>
         </div>
+        <div id="achNotice" class="achNotice muted" hidden></div>
         <div id="nextTarget"></div>
         <div id="achievementsList" class="achList"></div>
       </section>

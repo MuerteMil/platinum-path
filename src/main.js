@@ -351,12 +351,20 @@ handle('achievements:get', async (appid, opts = {}) => {
   if ((opts.refresh || stale) && data.getApiKey() && data.getSettings().steamId && !g.noStats) {
     try { await sync.syncGame(appid); } catch (err) { /* show local data */ }
   }
-  return { ok: true, achievements: sync.achievementsForUI(appid), changes: data.getChanges(appid), game: data.getGame(appid) };
+  return { ok: true, achievements: sync.achievementsForUI(appid), sets: sync.setsForUI(appid), changes: data.getChanges(appid), game: data.getGame(appid) };
 });
 
 handle('achievements:update', (appid, apiName, patch) => {
   const a = data.updateAchievementUserData(appid, apiName, patch);
-  return a ? { ok: true } : { ok: false, error: 'not_found' };
+  if (!a) return { ok: false, error: 'not_found' };
+  // "Does not count for 100%" changes the game's totals right away.
+  if (patch && 'excluded' in patch) return { ok: true, game: sync.recompute(appid), sets: sync.setsForUI(appid) };
+  return { ok: true };
+});
+
+handle('achievements:setDlc', (appid, dlcAppId, owned) => {
+  const game = sync.setDlcOwned(appid, dlcAppId, !!owned);
+  return game ? { ok: true, game, sets: sync.setsForUI(appid) } : { ok: false, error: 'not_found' };
 });
 
 // Custom achievement tags (built-in ones live in the renderer).

@@ -1,6 +1,6 @@
 {
   "name": "platinum-path",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Local game library with Steam sync (playtime & achievements) and estimated completion difficulty",
   "author": "MuerteMil",
   "license": "MIT",

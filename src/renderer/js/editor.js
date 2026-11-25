@@ -7,6 +7,7 @@
 
   let current = null;       // appid being edited
   let achievements = [];
+  let sets = [];            // Steam achievement sets with progress (empty when the game has none)
   let collections = [];     // being edited in "My data"
   let openSeq = 0;
   let initialForm = '';     // snapshot of "My data" to detect unsaved changes
@@ -76,6 +77,7 @@
       const hl = h != null ? `~${fmtNum(h, 0)} h` : (g.hltb && !g.hltb.at ? '…' : '—');
       stats.push(`<div class="hStat" id="hltbStat"><span>${escapeHtml(t('hltb.label'))}</span><b>${hl}</b>${left != null ? `<small>${escapeHtml(left > 0 ? t('hltb.left', { h: fmtNum(left, 0) }) : t('hltb.over'))}</small>` : ''}</div>`);
     }
+    if (Number(g.setsTotal) >= 2) stats.push(`<div class="hStat"><span>${escapeHtml(t('hero.sets'))}</span><b>${Number(g.setsDone) || 0}/${Number(g.setsTotal)}</b></div>`);
     if (done && g.completedAtSec) stats.push(`<div class="hStat gold"><span>${escapeHtml(t('hero.completed'))}</span><b>💎 ${escapeHtml(fmtDate(g.completedAtSec * 1000, false))}</b></div>`);
     $('heroStats').innerHTML = stats.join('');
     $('hltbLinkBtn').hidden = !(g.hltb && g.hltb.id);
@@ -169,7 +171,9 @@
     fillForm(g);
     switchTab(tab);
     achievements = [];
+    sets = [];
     $('achSearch').value = '';
+    $('achSet').value = 'all';
     $('achievementsList').innerHTML = `<div class="muted pad">${escapeHtml(t('common.loading'))}</div>`;
     $('nextTarget').innerHTML = '';
     $('achCount').textContent = '';
@@ -195,18 +199,79 @@
       const res = await window.api.achievements(current, { refresh });
       if (seq !== openSeq) return; // another game was opened meanwhile
       achievements = (res && res.achievements) || [];
-      if (res && res.game) {
-        const keepHltb = (PP.gameById(current) || {}).hltb;
-        replaceInLibrary({ ...res.game, hltb: res.game.hltb || keepHltb });
-        renderHero(PP.gameById(current));
-        fillHints(PP.gameById(current));
-      }
+      sets = (res && Array.isArray(res.sets)) ? res.sets : [];
+      if (res && res.game) applyGame(res.game);
     } catch {
       achievements = [];
     } finally {
       $('achRefreshBtn').disabled = false;
     }
     renderAchievements();
+  }
+
+  /** New totals from the main process (after a refresh or a "does not count" change). */
+  function applyGame(game) {
+    const keepHltb = (PP.gameById(current) || {}).hltb;
+    replaceInLibrary({ ...game, hltb: game.hltb || keepHltb });
+    renderHero(PP.gameById(current));
+    fillHints(PP.gameById(current));
+  }
+
+  // ---------- achievement sets ----------
+  const setById = (id) => sets.find(s => s.id === (Number(id) || 0)) || null;
+  /** Show set sections only when they add something: two or more sets, or a DLC set. */
+  function hasSets() { return sets.length >= 2 || sets.some(s => s.dlcAppId); }
+
+  /** Why an achievement does not count for 100% ('' when it counts). Same rules as the main process. */
+  function notCounted(a) {
+    if (a.existsInCurrentSteamData === false) return 'removed';
+    const s = setById(a.groupId);
+    // A set Steam does not show to players (developer-only) is not in `sets`: it does not count.
+    if (!s && sets.length && (Number(a.groupId) || 0) !== 0) return 'hiddenSet';
+    if (a.archived || (s && s.archived)) return 'archived';
+    if (s && !s.owned) return 'dlc';
+    if (a.excluded) return 'user';
+    return '';
+  }
+
+  function setName(s) {
+    if (s.name) return s.name;
+    return s.dlcAppId ? t('sets.kindDlc') : t('sets.base');
+  }
+
+  function fillSetSelect() {
+    const sel = $('achSet');
+    const show = hasSets();
+    sel.hidden = !show;
+    if (!show) { sel.value = 'all'; return; }
+    const prev = sel.value;
+    sel.innerHTML = `<option value="all">${escapeHtml(t('sets.all'))}</option>` +
+      sets.map(s => `<option value="${s.id}">${escapeHtml(setName(s))}</option>`).join('');
+    sel.value = [...sel.options].some(o => o.value === prev) ? prev : 'all';
+  }
+
+  function setHeadHTML(s, shown) {
+    const done = s.total > 0 && s.unlocked >= s.total;
+    const p = s.total ? Math.floor((s.unlocked / s.total) * 100) : 0;
+    const kind = s.dlcAppId ? 'dlc' : 'base';
+    const owned = s.dlcAppId ? `<label class="check setOwned"><input type="checkbox" data-dlc-owned="${s.dlcAppId}" ${s.owned ? 'checked' : ''}/> <span>${escapeHtml(t('sets.owned'))}</span></label>` : '';
+    const state = !s.owned ? `<span class="setOff">${escapeHtml(t('sets.off'))}</span>`
+      : s.archived ? `<span class="setOff">${escapeHtml(t('sets.archived'))}</span>`
+      : done ? `<span class="setDone">${escapeHtml(t('sets.done'))}</span>` : '';
+    return `
+      <div class="setHead ${kind} ${done && s.owned ? 'done' : ''} ${!s.owned || s.archived ? 'off' : ''}">
+        <div class="setTitle">
+          <span class="setKind">${escapeHtml(s.dlcAppId ? t('sets.kindDlc') : t('sets.kindBase'))}</span>
+          <b>${escapeHtml(setName(s))}</b>
+          ${state}
+          ${shown !== s.all ? `<span class="muted setShown">${escapeHtml(t('sets.shown', { n: shown, all: s.all }))}</span>` : ''}
+        </div>
+        <div class="setProg">
+          ${s.owned && s.total ? `<div class="setBar"><i style="width:${p}%"></i></div><span>${s.unlocked}/${s.total}</span>`
+            : `<span class="setCount">${escapeHtml(t('sets.count', { n: s.all }))}</span>`}
+          ${owned}
+        </div>
+      </div>`;
   }
 
   // ---------- achievements ----------
@@ -219,8 +284,16 @@
   function renderAchievements() {
     const list = $('achievementsList');
     const g = PP.gameById(current) || {};
-    const live = achievements.filter(a => a.existsInCurrentSteamData !== false);
+    const live = achievements.filter(a => !notCounted(a)); // what counts for 100%, as Steam counts it
     $('achCount').textContent = live.length ? t('ach.count', { u: live.filter(a => a.unlocked).length, t: live.length }) : '';
+    fillSetSelect();
+
+    // What does not count for 100%, and why.
+    const nc = { archived: 0, dlc: 0, user: 0 };
+    for (const a of achievements) { const r = notCounted(a); if (r in nc) nc[r]++; }
+    const parts = Object.entries(nc).filter(([, n]) => n > 0).map(([k, n]) => t(`ach.nc.${k}`, { n }));
+    $('achNotice').innerHTML = parts.length ? `ⓘ ${escapeHtml(t('ach.notCounted', { list: parts.join(' · ') }))}` : '';
+    $('achNotice').hidden = !parts.length;
 
     if (!achievements.length) {
       list.innerHTML = `<div class="muted pad">${escapeHtml(g.noStats ? t('ach.noStats') : t('ach.notSynced'))}</div>`;
@@ -231,9 +304,12 @@
     const f = $('achFilter').value;
     const s = $('achSort').value;
     const term = $('achSearch').value.trim().toLowerCase();
+    const setSel = hasSets() ? $('achSet').value : 'all';
     let items = achievements.slice();
+    if (setSel !== 'all') items = items.filter(a => (Number(a.groupId) || 0) === Number(setSel));
     if (f === 'unlocked') items = items.filter(a => a.unlocked);
-    if (f === 'locked') items = items.filter(a => !a.unlocked);
+    if (f === 'locked') items = items.filter(a => !a.unlocked && !notCounted(a));
+    if (f === 'notCounted') items = items.filter(a => notCounted(a));
     if (f === 'hidden') items = items.filter(a => a.hidden);
     if (f.startsWith('tag:')) items = items.filter(a => tagsOf(a).includes(f.slice(4)));
     if (f === 'noted') items = items.filter(a => (a.userNote || '').trim());
@@ -245,16 +321,38 @@
     if (s === 'recent') items.sort((a, b) => (b.unlockTimeSec || 0) - (a.unlockTimeSec || 0));
 
     // Next target: most common locked achievement still on Steam.
-    const next = live.filter(a => !a.unlocked).sort((a, b) => pctOf(b) - pctOf(a))[0];
+    const next = live.filter(a => !a.unlocked && (setSel === 'all' || (Number(a.groupId) || 0) === Number(setSel)))
+      .sort((a, b) => pctOf(b) - pctOf(a))[0];
     const showNext = next && (f === 'all' || f === 'locked') && !term;
     if (showNext) items = items.filter(a => a !== next);
     $('nextTarget').innerHTML = showNext
       ? `<div class="nextTarget"><div class="nextLabel">🎯 ${escapeHtml(t('ach.next'))} <span class="muted">— ${escapeHtml(t('ach.nextHint'))}</span></div>${rowHTML(next, true)}</div>`
       : '';
 
-    list.innerHTML = items.length
-      ? items.map(a => rowHTML(a, false)).join('')
-      : `<div class="muted pad">${escapeHtml(t('ach.none'))}</div>`;
+    // Achievements that count go first; archived / not counted ones at the end of their list.
+    items.sort((a, b) => (!!notCounted(a)) - (!!notCounted(b)));
+
+    if (!items.length) {
+      list.innerHTML = `<div class="muted pad">${escapeHtml(t('ach.none'))}</div>`;
+      return;
+    }
+    if (!hasSets()) {
+      list.innerHTML = items.map(a => rowHTML(a, false)).join('');
+      return;
+    }
+    // One section per set, in Steam's order. The next target is counted in its set too.
+    const html = [];
+    const placed = new Set();
+    for (const s of sets) {
+      const inSet = items.filter(a => (Number(a.groupId) || 0) === s.id);
+      inSet.forEach(a => placed.add(a));
+      const shownCount = inSet.length + (showNext && (Number(next.groupId) || 0) === s.id ? 1 : 0);
+      if (!inSet.length) continue;
+      html.push(`<section class="achSet">${setHeadHTML(s, shownCount)}${inSet.map(a => rowHTML(a, false)).join('')}</section>`);
+    }
+    const rest = items.filter(a => !placed.has(a));
+    if (rest.length) html.push(`<section class="achSet"><div class="setHead"><div class="setTitle"><b>${escapeHtml(t('sets.other'))}</b></div></div>${rest.map(a => rowHTML(a, false)).join('')}</section>`);
+    list.innerHTML = html.join('');
   }
 
   function rowHTML(a, isNext) {
@@ -268,8 +366,11 @@
       : `<span class="achBadge locked">${escapeHtml(t('ach.locked'))}</span>`);
     if (a.globalPct != null) badges.push(`<span class="achBadge ${rarityClass(a.globalPct)}">${escapeHtml(t('ach.global', { p: fmtNum(a.globalPct, 1) }))}</span>`);
     if (a.hidden) badges.push(`<span class="achBadge hid">${escapeHtml(t('ach.hidden'))}</span>`);
+    const why = notCounted(a);
+    if (why === 'archived') badges.push(`<span class="achBadge arch" title="${escapeHtml(t('ach.archivedHint'))}">${escapeHtml(t('ach.archived'))}</span>`);
+    if (why === 'user') badges.push(`<span class="achBadge off">${escapeHtml(t('ach.excludedBadge'))}</span>`);
     for (const tg of tags) badges.push(TAGS.badgeHTML(tg));
-    if (a.existsInCurrentSteamData === false) badges.push(`<span class="achBadge">${escapeHtml(t('ach.removed'))}</span>`);
+    if (why === 'removed') badges.push(`<span class="achBadge">${escapeHtml(t('ach.removed'))}</span>`);
     const api = escapeHtml(a.achievementApiName);
     const tagPicker = TAGS.all().map(tg => TAGS.toggleHTML(tg, tags.includes(tg))).join('') +
       `<button type="button" class="tagToggle addTag" data-new-tag title="${escapeHtml(t('tags.newTitle'))}">＋ ${escapeHtml(t('tags.new'))}</button>` +
@@ -280,7 +381,7 @@
         <button type="button" class="btn small primary" data-new-tag-save>${escapeHtml(t('tags.create'))}</button>
       </span>`;
     return `
-      <div class="achRow ${a.unlocked ? 'unlocked' : 'locked'} ${isNext ? 'next' : ''}" data-api="${api}">
+      <div class="achRow ${a.unlocked ? 'unlocked' : 'locked'} ${isNext ? 'next' : ''} ${why ? 'notCounted' : ''}" data-api="${api}">
         <img class="achIcon ${!a.unlocked && !a.localGrayIconUrl && !a.iconGrayUrl ? 'noGray' : ''}" src="${icon}" ${fallback && fallback !== icon ? `data-fallback="${fallback}"` : ''} alt="" loading="lazy"/>
         <div class="achMeta">
           <div class="achName">${escapeHtml(a.displayName || a.achievementApiName)}</div>
@@ -293,6 +394,7 @@
         <div class="achTools">
           <button type="button" class="achTool ${tags.length ? 'on' : ''}" data-ach-act="tags" title="${escapeHtml(t('ach.tags'))}">🏷</button>
           <button type="button" class="achTool ${a.userNote ? 'on' : ''}" data-ach-act="note" title="${escapeHtml(t('ach.note'))}">✎</button>
+          ${why === 'removed' || why === 'archived' ? '' : `<button type="button" class="achTool ${a.excluded ? 'on off' : ''}" data-ach-act="exclude" title="${escapeHtml(a.excluded ? t('ach.include') : t('ach.exclude'))}" aria-pressed="${a.excluded ? 'true' : 'false'}">⊘</button>`}
         </div>
       </div>`;
   }
@@ -302,7 +404,10 @@
     if (!a) return;
     Object.assign(a, patch);
     if (patch.tags) a.missable = patch.tags.includes('missable');
-    await window.api.updateAchievement(current, apiName, patch);
+    const res = await window.api.updateAchievement(current, apiName, patch);
+    if (res && res.game) { applyGame(res.game); PP.render(); }
+    if (res && Array.isArray(res.sets)) sets = res.sets;
+    return res;
   }
 
   function reopenPicker(api) {
@@ -394,6 +499,19 @@
     });
     document.querySelectorAll('[data-sheettab]').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.sheettab)));
     $('achFilter').addEventListener('change', renderAchievements);
+    $('achSet').addEventListener('change', renderAchievements);
+    // "I have this DLC": its achievement set counts for 100% (Steam counts a DLC set only for owners).
+    $('achievementsList').addEventListener('change', async (e) => {
+      const box = e.target.closest('[data-dlc-owned]');
+      if (!box) return;
+      box.disabled = true;
+      const res = await window.api.setDlcOwned(current, Number(box.dataset.dlcOwned), box.checked);
+      if (res && res.ok) {
+        if (Array.isArray(res.sets)) sets = res.sets;
+        if (res.game) { applyGame(res.game); PP.render(); }
+      }
+      renderAchievements();
+    });
     $('achSort').addEventListener('change', () => { try { localStorage.setItem('pp.achSort', $('achSort').value); } catch {} renderAchievements(); });
     $('achSearch').addEventListener('input', PP.debounce(renderAchievements, 150));
     $('achRefreshBtn').addEventListener('click', () => loadAchievements(true));
@@ -454,6 +572,13 @@
       if (!btn) return;
       const row = btn.closest('.achRow');
       if (!row) return;
+      if (btn.dataset.achAct === 'exclude') {
+        const a = achievements.find(x => x.achievementApiName === row.dataset.api);
+        if (!a) return;
+        await updateAch(a.achievementApiName, { excluded: !a.excluded });
+        renderAchievements();
+        return;
+      }
       const box = row.querySelector(btn.dataset.achAct === 'tags' ? '.achTagPicker' : '.achNoteEdit');
       box.hidden = !box.hidden;
       if (!box.hidden && btn.dataset.achAct === 'note') box.querySelector('textarea').focus();

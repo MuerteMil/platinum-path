@@ -340,3 +340,138 @@ test('custom achievement tags: create, reuse, rename, delete and backup', () => 
   // Invalid entries in a backup are dropped.
   assert.deepStrictEqual(data.sanitizeCustomTags([{ id: 'bad id', name: 'x' }, { id: 'c_abcd1234', name: '' }, null]), []);
 });
+
+// ---------- Steam achievement sets (1.6) ----------
+const FIX = require('./fixtures/achievementSets');
+function fakeFetch(body) { return async () => ({ status: 200, ok: true, json: async () => body }); }
+function listFrom(fixture, unlocked = []) {
+  const list = {};
+  for (const a of fixture.response.achievements) {
+    list[a.internal_name] = { achievementApiName: a.internal_name, unlocked: unlocked.includes(a.internal_name), globalPct: Number(a.player_percent_unlocked), groupId: a.groupid, archived: a.archived };
+  }
+  return list;
+}
+
+test('achievement sets are read from Steam\'s GetGameAchievements answer', async () => {
+  const steam = require('../src/main/steam');
+  try {
+    steam._setFetch(fakeFetch(FIX.ets2));
+    const s = await steam.getAchievementSets({ appid: 227300, language: 'english' });
+    assert.strictEqual(s.hash, 3529575084);
+    assert.deepStrictEqual(s.groups.find(g => g.id === 1), { id: 1, name: 'Greece Map Expansion Achievements', order: 0, archived: false, dlcAppId: 2604420, developerOnly: false, isPublic: true });
+    assert.deepStrictEqual(s.achievements.st_first_cargo, { groupId: 2, archived: false });
+    steam._setFetch(fakeFetch(FIX.tf2));
+    const tf = await steam.getAchievementSets({ appid: 440 });
+    assert.strictEqual(tf.achievements.TF_REPLAY_YOUTUBE_VIEWS_TIER1.archived, true);
+    // Anything unexpected means "no sets", never an error for the sync.
+    steam._setFetch(fakeFetch({ response: {} }));
+    assert.strictEqual(await steam.getAchievementSets({ appid: 1 }), null);
+    steam._setFetch(async () => { throw new Error('offline'); });
+    assert.strictEqual(await steam.getAchievementSets({ appid: 1 }), null);
+  } finally {
+    steam._setFetch((...args) => fetch(...args));
+  }
+});
+
+test('archived achievements, DLC you do not have and your own choice do not count for 100%', async () => {
+  const steam = require('../src/main/steam');
+  const sets = (fx) => { steam._setFetch(fakeFetch(fx)); return steam.getAchievementSets({ appid: 1 }); };
+  try {
+    // TF2: 2 archived achievements stop counting, like Steam's completion_achievements.
+    const tf = await sets(FIX.tf2);
+    const tfList = listFrom(FIX.tf2, ['TF_REPLAY_YOUTUBE_VIEWS_TIER1']);
+    let s = ach.summarize(tfList, { sets: tf });
+    assert.strictEqual(s.achTotal, 3);
+    assert.strictEqual(s.achUnlocked, 0, 'an archived achievement you have does not add to the count');
+    assert.deepStrictEqual(s.achNotCounted, { archived: 2, dlc: 0, user: 0 });
+    assert.strictEqual(s.rarestPct, 11.6, 'rarity ignores archived achievements');
+    assert.strictEqual(s.setsTotal, 3);
+
+    // ETS2: a DLC set counts until the player says they do not have that DLC.
+    const ets = await sets(FIX.ets2);
+    const etsList = listFrom(FIX.ets2, ['use_train', 'map_discover_100', 'aca_first']);
+    s = ach.summarize(etsList, { sets: ets });
+    assert.strictEqual(s.achTotal, 5);
+    s = ach.summarize(etsList, { sets: ets, dlcNotOwned: [2604420, 558245] });
+    assert.strictEqual(s.achTotal, 3);
+    assert.strictEqual(s.achUnlocked, 3);
+    assert.deepStrictEqual(s.achNotCounted, { archived: 0, dlc: 2, user: 0 });
+    assert.strictEqual(s.setsDone, 2, 'base game and Driving Academy are complete');
+    // "Does not count for 100%" set by the player.
+    etsList.use_train.excluded = true;
+    s = ach.summarize(etsList, { sets: ets, dlcNotOwned: [2604420, 558245] });
+    assert.strictEqual(s.achTotal, 2);
+    assert.strictEqual(s.achNotCounted.user, 1);
+
+    // Portal 2: Steam's order (base set first, then `order`), empty sets hidden.
+    const p2 = await sets(FIX.portal2);
+    const prog = ach.setProgress(listFrom(FIX.portal2, ['ACH.WAKE_UP']), { sets: p2 });
+    assert.deepStrictEqual(prog.map(x => [x.name, x.unlocked, x.total]), [['Single Player', 1, 3], ['Cooperative', 0, 2]]);
+    // A game without sets keeps working exactly as before.
+    s = ach.summarize({ A: { achievementApiName: 'A', unlocked: true }, B: { achievementApiName: 'B' } });
+    assert.deepStrictEqual([s.achTotal, s.achUnlocked, s.setsTotal], [2, 1, null]);
+  } finally {
+    steam._setFetch((...args) => fetch(...args));
+  }
+});
+
+test('merging keeps the player\'s "does not count" choice and takes sets from Steam', () => {
+  const prevList = { A: { achievementApiName: 'A', excluded: true, groupId: 3 }, B: { achievementApiName: 'B' } };
+  const schema = [{ apiName: 'A' }, { apiName: 'B' }];
+  const sets = { achievements: { B: { groupId: 2, archived: true } } };
+  const { list } = ach.mergeAchievements({ appid: 1, prevList, schema, player: [], nowIso: 'x', firstSync: false, sets });
+  assert.strictEqual(list.A.excluded, true);
+  assert.strictEqual(list.A.groupId, 3, 'kept when Steam does not say');
+  assert.deepStrictEqual([list.B.groupId, list.B.archived], [2, true]);
+  const again = ach.mergeAchievements({ appid: 1, prevList: list, schema, player: [], nowIso: 'y', firstSync: false });
+  assert.deepStrictEqual([again.list.B.groupId, again.list.B.archived], [2, true], 'kept when sets were not fetched');
+});
+
+test('sync stores sets, never celebrates a 100% that only comes from the new rules, and recalculates on demand', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-'));
+  delete require.cache[require.resolve('../src/main/data')];
+  delete require.cache[require.resolve('../src/main/sync')];
+  const data = require('../src/main/data');
+  const steam = require('../src/main/steam');
+  const sync = require('../src/main/sync');
+  data.init({ userData: dir, safeStorage: null });
+  data.setApiKey('0123456789ABCDEF0123456789ABCDEF');
+  data.setSettings({ steamId: '76561198000000000' });
+  data.createGame(440, { name: 'TF2', achTotal: 5, achUnlocked: 3 });
+  const names = FIX.tf2.response.achievements.map(a => a.internal_name);
+  const have = ['TF_PLAY_GAME_EVERYCLASS', 'TF_REPLAY_SAVE_REPLAY', 'TF_CHRISTMAS_COLLECT_GIFTS'];
+  data.setAchGame(440, { meta: { schemaAt: Date.now(), pctAt: Date.now(), lang: 'english' }, list: Object.fromEntries(names.map(n => [n, { achievementApiName: n, unlocked: have.includes(n) }])) });
+  const orig = { ...steam };
+  let setsCalls = 0;
+  steam.getPlayerAchievements = async () => ({ noStats: false, list: names.map(n => ({ apiname: n, achieved: have.includes(n) ? 1 : 0, unlocktime: have.includes(n) ? 1700000000 : 0 })) });
+  steam.getSchema = async () => names.map(n => ({ apiName: n, displayName: n }));
+  steam.getGlobalPercentages = async () => null;
+  steam.downloadFile = async () => false;
+  steam._setFetch(fakeFetch(FIX.tf2));
+  const realSets = orig.getAchievementSets;
+  steam.getAchievementSets = async (o) => { setsCalls++; return realSets(o); };
+  const notes = [];
+  sync.configure({ emitter: () => {}, notifier: (n) => notes.push(n) });
+  try {
+    const r = await sync.syncGame(440);
+    let g = data.getGame(440);
+    assert.strictEqual(setsCalls, 1);
+    assert.deepStrictEqual([g.achUnlocked, g.achTotal], [3, 3], 'the 2 archived ones no longer count');
+    assert.strictEqual(r.completed, false, 'no celebration for a 100% caused by the new rules');
+    assert.ok(g.completedAtSec, 'but the game is recorded as completed');
+    assert.deepStrictEqual(notes.map(n => n.kind), []);
+    // Sets are not asked for again on every sync.
+    await sync.syncGame(440, { notify: false });
+    assert.strictEqual(setsCalls, 1);
+    // The player excludes an achievement / marks a DLC as not owned: totals change right away.
+    data.updateAchievementUserData(440, 'TF_CHRISTMAS_COLLECT_GIFTS', { excluded: true });
+    g = sync.recompute(440);
+    assert.deepStrictEqual([g.achUnlocked, g.achTotal, g.achNotCounted.user], [2, 2, 1]);
+    const ui = sync.setsForUI(440);
+    assert.deepStrictEqual(ui.map(s => [s.name || 'base', s.unlocked, s.total, s.all]), [['base', 1, 1, 1], ['Replay', 1, 1, 3], ['Christmas', 0, 0, 1]]);
+    assert.strictEqual(sync.setDlcOwned(440, 0, false), null, 'a set without a DLC id cannot be switched off');
+  } finally {
+    Object.assign(steam, orig);
+    steam._setFetch((...args) => fetch(...args));
+  }
+});

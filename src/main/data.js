@@ -316,6 +316,7 @@ function updateAchievementUserData(appid, apiName, patch) {
   if (!a) return null;
   if (patch && 'userNote' in patch) a.userNote = String(patch.userNote || '').slice(0, 2000);
   if (patch && 'missable' in patch) a.missable = !!patch.missable;
+  if (patch && 'excluded' in patch) a.excluded = !!patch.excluded;
   if (patch && Array.isArray(patch.tags)) {
     a.tags = Array.from(new Set(patch.tags.filter(isValidTag)));
     a.missable = a.tags.includes('missable');

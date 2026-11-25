@@ -498,3 +498,31 @@ dialog.sheet{overflow:hidden}
 .wResult.bad{border-color:rgba(var(--bad),.55)}
 .wResult .muted{margin-top:3px;line-height:1.45}
 .wActions{margin-top:10px}
+
+/* ---------- Steam achievement sets (1.6) ---------- */
+.achNotice{font-size:12.5px;margin:0 0 10px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--panel-2)}
+.achSet{margin:0 0 14px}
+.setHead{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 14px;margin:0 0 8px;padding:9px 12px;border-radius:10px;border:1px solid var(--border);border-left:4px solid #4c9bff;background:#161c25}
+.setHead.dlc{border-left-color:#a970ff}
+.setHead.off{opacity:.75}
+.setTitle{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-width:0}
+.setTitle b{font-size:14px}
+.setKind{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:999px;color:#cfe3ff;background:rgba(76,155,255,.16)}
+.setHead.dlc .setKind{color:#e6d6ff;background:rgba(169,112,255,.18)}
+.setDone{font-size:12px;font-weight:600;color:#9be7b3}
+.setOff{font-size:12px;color:var(--muted)}
+.setShown{font-size:12px}
+.setProg{display:flex;align-items:center;gap:10px;font-size:12.5px;font-variant-numeric:tabular-nums}
+.setBar{width:120px;height:6px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden}
+.setBar i{display:block;height:100%;background:#4c9bff;border-radius:inherit}
+.setHead.dlc .setBar i{background:#a970ff}
+.setHead.done .setBar i{background:#53c97e}
+.setOwned{font-size:12px;margin:0}
+.achRow.notCounted{opacity:.62}
+.achRow.notCounted:hover{opacity:.85}
+.achBadge.arch{color:#c9c9d6;border-style:dashed}
+.achBadge.off{color:#ffc8c8;border-color:rgba(var(--bad),.45)}
+.achTool.on.off{color:#ffc8c8;border-color:rgba(var(--bad),.55);background:rgba(var(--bad),.12)}
+/* Three tools side by side so rows keep their height */
+.achTools{flex-direction:row;align-items:flex-start;gap:4px}
+.setCount{font-size:12px;color:var(--muted)}

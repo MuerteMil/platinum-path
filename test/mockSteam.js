@@ -113,6 +113,30 @@ async function mockFetch(url) {
       icon: `https://steamcdn-a.akamaihd.net/icons/${q.appid}/${a.apiname}.jpg`, icongray: `https://steamcdn-a.akamaihd.net/icons/${q.appid}/${a.apiname}_g.jpg`
     })) } } });
   }
+  if (p.includes('GetGameAchievements')) {
+    // Steam achievement sets: Portal 2 has two base-game sets, Dead Cells has two DLC sets and
+    // one archived achievement; the rest have only the base set, like most games.
+    const list = ACH[q.appid] || [];
+    if (!list.length) return res(200, { response: {} });
+    const sp = q.language === 'spanish';
+    const grp = (groupid, name, extra = {}) => ({ groupid, localized_name: name, dlcappid: 0, archived: false, developeronly: false, order: 0, ispublic: true, ...extra });
+    let groups = [grp(0, '')];
+    let groupOf = () => 0;
+    let archived = () => false;
+    if (Number(q.appid) === 620) {
+      groups = [grp(0, ''), grp(1, sp ? 'Cooperativo' : 'Cooperative', { order: 1 }), grp(2, sp ? 'Un jugador' : 'Single Player')];
+      groupOf = (i) => (i < 29 ? 2 : 1);
+    }
+    if (Number(q.appid) === 588650) {
+      groups = [grp(0, ''), grp(1, 'The Bad Seed', { dlcappid: 1102270 }), grp(2, 'Fatal Falls', { dlcappid: 1309050 })];
+      groupOf = (i) => (i < 40 ? 0 : i < 48 ? 1 : 2);
+      archived = (i) => i === 38;
+    }
+    return res(200, { response: {
+      achievements: list.map((a, i) => ({ internal_name: a.apiname, localized_name: a.name, localized_desc: a.description, icon: `${a.apiname}.jpg`, icon_gray: `${a.apiname}_g.jpg`, hidden: !!a.hidden, player_percent_unlocked: String(a.pct), internal_key: i + 1, groupid: groupOf(i), archived: archived(i), progress_type: 0 })),
+      schema_version: 1, groups, schema_hash: Number(q.appid)
+    } });
+  }
   if (p.includes('GetGlobalAchievementPercentagesForApp')) {
     const list = ACH[q.gameid] || [];
     return res(200, { achievementpercentages: { achievements: list.map(a => ({ name: a.apiname, percent: String(a.pct) })) } });

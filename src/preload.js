@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('api', {
 
   achievements: (appid, opts) => ipcRenderer.invoke('achievements:get', appid, opts),
   updateAchievement: (appid, apiName, patch) => ipcRenderer.invoke('achievements:update', appid, apiName, patch),
+  setDlcOwned: (appid, dlcAppId, owned) => ipcRenderer.invoke('achievements:setDlc', appid, dlcAppId, owned),
   customTags: () => ipcRenderer.invoke('tags:list'),
   createTag: (tag) => ipcRenderer.invoke('tags:create', tag),
   updateTag: (id, patch) => ipcRenderer.invoke('tags:update', id, patch),

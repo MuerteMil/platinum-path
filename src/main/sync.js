@@ -11,7 +11,7 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 const data = require('./data');
 const steam = require('./steam');
-const { mergeAchievements, summarize, completionUpdate } = require('./achLogic');
+const { mergeAchievements, summarize, completionUpdate, setProgress } = require('./achLogic');
 
 const DAY = 24 * 60 * 60 * 1000;
 const SCHEMA_TTL = 7 * DAY;
@@ -137,6 +137,24 @@ async function doSyncGame(appid, { forceSchema = false } = {}) {
     }
   }
 
+  // 2b) Achievement sets (no key needed). Refreshed together with the schema; if Steam
+  // does not answer, the previous sets are kept and it is tried again a day later.
+  const hadSets = !!(meta.sets && Array.isArray(meta.sets.groups));
+  let sets = null;
+  const needSets = needSchema || !meta.setsAt || meta.setsLang !== cred.language;
+  if (needSets && (needSchema || !meta.setsTriedAt || now - meta.setsTriedAt > DAY)) {
+    meta.setsTriedAt = now;
+    sets = await steam.getAchievementSets({ appid: id, language: cred.language });
+    if (sets) {
+      meta.sets = { hash: sets.hash, version: sets.version, groups: sets.groups };
+      meta.setsAt = now;
+      meta.setsLang = cred.language;
+    }
+  }
+  // The first time sets arrive, totals can change (archived achievements stop counting):
+  // that must not show a "100%!" celebration for something the player did long ago.
+  const firstSets = !hadSets && !!sets;
+
   // 3) Global % (rarity) when stale.
   let globalPct = null;
   if (!meta.pctAt || now - meta.pctAt > PCT_TTL || firstSync) {
@@ -145,7 +163,7 @@ async function doSyncGame(appid, { forceSchema = false } = {}) {
   }
 
   const { list, changes } = mergeAchievements({
-    appid: id, prevList, schema, player: player.list, globalPct, nowIso, firstSync
+    appid: id, prevList, schema, player: player.list, globalPct, nowIso, firstSync, sets
   });
 
   normalizeIcons(list);
@@ -153,7 +171,7 @@ async function doSyncGame(appid, { forceSchema = false } = {}) {
   data.setAchGame(id, { meta, list });
   data.pushChanges(changes);
 
-  const summary = summarize(list);
+  const summary = summarize(list, meta);
   const comp = completionUpdate(game, summary, now);
   const { justCompleted, justCompletedFirst, ...compPatch } = comp;
   data.patchGame(id, {
@@ -170,7 +188,7 @@ async function doSyncGame(appid, { forceSchema = false } = {}) {
     name: game.name,
     newlyUnlocked: changes.filter(c => c.changeType === 'unlocked'),
     added: changes.filter(c => c.changeType === 'added').length,
-    completed: justCompleted && !firstSync, // no celebrations for data migrated from 1.x
+    completed: justCompleted && !firstSync && !firstSets, // no celebrations for old data or new counting rules
     newAchAlert: !!compPatch.newAchAlert
   };
 }
@@ -287,6 +305,44 @@ function schedule() {
 
 function stop() { if (timer) clearInterval(timer); timer = null; }
 
+/**
+ * Recalculate a game's totals from its stored achievements (after the player marks an
+ * achievement as "does not count" or says they do not have a DLC). No Steam calls.
+ */
+function recompute(appid) {
+  const id = Number(appid);
+  const game = data.getGame(id);
+  if (!game) return null;
+  const ach = data.getAchGame(id);
+  const summary = summarize(ach.list || {}, ach.meta || {});
+  const patch = { ...summary };
+  const done = summary.achTotal > 0 && summary.achUnlocked >= summary.achTotal;
+  if (done && !game.completedAtSec) patch.completedAtSec = summary.lastUnlockTimeSec || Math.floor(Date.now() / 1000);
+  if (done && game.newAchAlert) patch.newAchAlert = null;
+  data.patchGame(id, patch);
+  return data.getGame(id);
+}
+
+/** The player says whether they have a DLC whose achievement set Steam lists for this game. */
+function setDlcOwned(appid, dlcAppId, owned) {
+  const id = Number(appid);
+  const dlc = Number(dlcAppId);
+  if (!data.getGame(id) || !(dlc > 0)) return null;
+  const ach = data.getAchGame(id);
+  const meta = { ...(ach.meta || {}) };
+  const notOwned = new Set((meta.dlcNotOwned || []).map(Number));
+  if (owned) notOwned.delete(dlc); else notOwned.add(dlc);
+  meta.dlcNotOwned = [...notOwned];
+  data.setAchGame(id, { ...ach, meta });
+  return recompute(id);
+}
+
+/** Set progress for the UI (empty when the game has no sets). */
+function setsForUI(appid) {
+  const ach = data.getAchGame(appid);
+  return setProgress(ach.list || {}, ach.meta || {});
+}
+
 /** Achievements for the UI, with file:// URLs for cached icons. */
 function achievementsForUI(appid) {
   const ach = data.getAchGame(appid);
@@ -299,4 +355,4 @@ function achievementsForUI(appid) {
   }));
 }
 
-module.exports = { configure, syncAll, syncGame, schedule, stop, isRunning, achievementsForUI };
+module.exports = { configure, syncAll, syncGame, schedule, stop, isRunning, achievementsForUI, recompute, setDlcOwned, setsForUI };

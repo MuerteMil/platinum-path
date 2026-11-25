@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.6.0
+
+### New
+- **Steam achievement sets.** Games that use Steam's new achievement sets show their achievements grouped by set, in Steam's order, each with its own progress bar and a "Set completed" badge: base-game sets in blue, DLC sets in purple. A filter shows a single set, and the game header shows how many sets are complete.
+- **Totals now match Steam:**
+  - **Archived achievements** (retired by the developer, such as Team Fortress 2's YouTube ones) no longer count for 100% or for the estimated difficulty. If you have one, it is still shown, marked "Archived".
+  - **DLC sets**: untick "I own this DLC" on a DLC set and its achievements stop counting for 100%. Steam does not say which DLC you own, so every DLC set counts until you untick it.
+  - **"Do not count for 100%"** (⊘ button on any achievement), for anything else you want to leave out. It works in any game, with or without sets.
+  - A line above the list explains what is not being counted, and the "Not counted for 100%" filter lists those achievements.
+- **"Hidden" achievements are now called "Spoiler"**, as on Steam.
+
+### Notes
+- Set data comes from the same source as Steam's own achievements page, needs no API key, and is refreshed together with the achievement list. If Steam does not answer, the app keeps working with a single list.
+- A game that reaches 100% only because archived achievements stopped counting is marked as completed without a celebration.
+
 ## 1.5.0
 
 ### New

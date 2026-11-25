@@ -170,6 +170,65 @@ async function run({ win, app, calls }) {
       await waitFor(`return document.querySelectorAll('#achievementsList .achRow').length > 0`);
       await shot('02-migrated-sheet');
     }
+    if (SCENARIO === 'sets') {
+      // Needs a library: run the "fresh" scenario first with the same PP_USER_DATA.
+      await waitFor(`return PP.state.library.length > 0`);
+      await sleep(1500);
+      const heads = `return [...document.querySelectorAll('#achievementsList .setHead')].map(h => h.querySelector('.setTitle b').textContent + ' ' + h.querySelector('.setProg span').textContent + (h.classList.contains('done') ? ' ✓' : '') + (h.classList.contains('off') ? ' (off)' : '')).join(' | ')`;
+      // Portal 2: two base-game sets, in Steam's order.
+      await click('.card[data-appid="620"]');
+      await waitFor(`return document.querySelectorAll('#achievementsList .setHead').length >= 2`);
+      log('portal2 sets', await js(heads));
+      log('portal2 count', await js(`return document.getElementById('achCount').textContent`));
+      await shot('01-portal2-sets');
+      await js(`document.querySelector('#editModal [value="cancel"]').click()`);
+      await sleep(500);
+      // Dead Cells: two DLC sets and an archived achievement.
+      await click('.card[data-appid="588650"]');
+      await waitFor(`return document.querySelectorAll('#achievementsList .setHead').length >= 3`);
+      log('deadcells sets', await js(heads));
+      log('deadcells notice', await js(`return document.getElementById('achNotice').textContent`));
+      log('deadcells hero', await js(`return document.querySelector('.ringStat b').textContent`));
+      log('archived badges', await js(`return document.querySelectorAll('.achBadge.arch').length`));
+      await shot('02-deadcells-sets');
+      // "I own this DLC" off for Fatal Falls (6 achievements, 3 unlocked) -> 47/47, 100%.
+      await js(`const b = document.querySelector('[data-dlc-owned="1309050"]'); b.checked = false; b.dispatchEvent(new Event('change', { bubbles: true }));`);
+      await waitFor(`return PP.gameById(588650).achTotal === 47`);
+      await sleep(400);
+      log('after dlc off', await js(`const g = PP.gameById(588650); return g.achUnlocked + '/' + g.achTotal + ' sets ' + g.setsDone + '/' + g.setsTotal`), '|', await js(heads));
+      log('notice', await js(`return document.getElementById('achNotice').textContent`));
+      await shot('03-deadcells-dlc-off');
+      // "Does not count for 100%" on one achievement, then back.
+      const firstRow = `document.querySelector('#achievementsList .achRow:not(.notCounted)')`;
+      const api = await js(`return ${firstRow}.dataset.api`);
+      await js(`${firstRow}.querySelector('[data-ach-act="exclude"]').click()`);
+      await waitFor(`return PP.gameById(588650).achTotal === 46`);
+      await sleep(300);
+      log('excluded', api, await js(`const g = PP.gameById(588650); return g.achUnlocked + '/' + g.achTotal`), await js(`return document.querySelector('.achRow[data-api="${api}"] .achBadge.off') ? 'badge' : 'no badge'`));
+      await shot('04-excluded');
+      await js(`document.querySelector('.achRow[data-api="${api}"] [data-ach-act="exclude"]').click()`);
+      await waitFor(`return PP.gameById(588650).achTotal === 47`);
+      // Filters: one set, and "not counted".
+      await js(`const s = document.getElementById('achSet'); s.value = '1'; s.dispatchEvent(new Event('change'));`);
+      await sleep(300);
+      log('set filter rows', await js(`return document.querySelectorAll('#achievementsList .achRow').length + ' rows, heads ' + document.querySelectorAll('#achievementsList .setHead').length`));
+      await js(`const s = document.getElementById('achSet'); s.value = 'all'; s.dispatchEvent(new Event('change')); const f = document.getElementById('achFilter'); f.value = 'notCounted'; f.dispatchEvent(new Event('change'));`);
+      await sleep(300);
+      log('notCounted rows', await js(`return document.querySelectorAll('#achievementsList .achRow').length`));
+      await shot('05-not-counted');
+      await js(`const f = document.getElementById('achFilter'); f.value = 'all'; f.dispatchEvent(new Event('change'));`);
+      await js(`document.querySelector('#editModal [value="cancel"]').click()`);
+      await sleep(600);
+      log('card', await js(`const c = document.querySelector('.card[data-appid="588650"]'); return c ? c.textContent.replace(/\s+/g, ' ').trim().slice(0, 140) : 'none'`));
+      // Spoiler wording, and a game without sets stays a flat list.
+      await click('.card[data-appid="367520"]');
+      await waitFor(`return document.querySelectorAll('#achievementsList .achRow').length > 3`);
+      log('hollow knight', await js(`return document.querySelectorAll('#achievementsList .setHead').length + ' heads, set select hidden ' + document.getElementById('achSet').hidden + ', spoiler ' + document.querySelectorAll('.achBadge.hid').length + ' "' + (document.querySelector('.achBadge.hid') || {}).textContent + '"'`));
+      await shot('06-no-sets');
+      await js(`document.querySelector('#editModal [value="cancel"]').click()`);
+      await sleep(400);
+      await shot('07-library');
+    }
     if (SCENARIO === 'tags') {
       // Needs a library: run the "fresh" scenario first with the same PP_USER_DATA.
       await waitFor(`return PP.state.library.length > 0`);

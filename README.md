@@ -21,6 +21,7 @@ It is built as a **100% local, offline-first tool**, giving you full control ove
 - Backups (export / import) — your API key is never included
 - Now playing detection, platinum showcase (export as image), collections, ignored games
 - Achievement tags (missable, online, co-op, grindy, hard, bugged) plus **your own custom tags**, with filters
+- **Steam achievement sets**: achievements grouped by set (base game and DLC) with their progress; archived achievements, DLC you do not own and anything you mark yourself do not count for 100%, like on Steam
 - HowLongToBeat time to 100% (unofficial), list view, system tray, 100% celebration
 - Monthly / yearly recap, shareable as an image
 - Setup assistant on first run (API key, profile and privacy check)
@@ -149,6 +150,7 @@ Está diseñada como una herramienta **100% local**, sin cuentas, sin suscripcio
 - Copias de seguridad (exportar / importar) — tu API key nunca se incluye
 - Juego en curso detectado, vitrina de platinos (exportable como imagen), colecciones, juegos ignorados
 - Etiquetas de logros (perdible, online, cooperativo, repetitivo, difícil, bugueado) y **etiquetas personalizadas**, con filtros
+- **Conjuntos de logros de Steam**: logros agrupados por conjunto (juego base y DLC) con su progreso; los logros archivados, los DLC que no tienes y lo que marques tú no cuentan para el 100%, como en Steam
 - Tiempo para el 100% de HowLongToBeat (no oficial), vista de lista, bandeja del sistema y celebración al 100%
 - Resumen mensual / anual, exportable como imagen
 - Asistente de configuración al primer inicio (API key, perfil y comprobación de privacidad)

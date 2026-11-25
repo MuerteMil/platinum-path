@@ -157,6 +157,38 @@ async function getSchema({ key, appid, language }) {
   })).filter(a => a.apiName);
 }
 
+/**
+ * Achievement sets (Steam "Achievement Sets", November 2026). Does not need an API key.
+ * IPlayerService/GetGameAchievements is the method Steam's own achievements page uses; it is
+ * not in the Web API documentation yet, so any problem returns null and the app keeps working
+ * with a single list.
+ * Returns { hash, version, groups: [...], achievements: { apiName: { groupId, archived } } }.
+ */
+async function getAchievementSets({ appid, language }) {
+  try {
+    const data = await webApi('/IPlayerService/GetGameAchievements/v1/', { appid, language: language || 'english' });
+    const r = data && data.response;
+    if (!r || !Array.isArray(r.achievements) || !r.achievements.length) return null;
+    const groups = (Array.isArray(r.groups) ? r.groups : []).map(g => ({
+      id: Number(g.groupid) || 0,
+      name: String(g.localized_name || '').trim().slice(0, 120),
+      order: Number(g.order) || 0,
+      archived: !!g.archived,
+      dlcAppId: Number(g.dlcappid) || 0,
+      developerOnly: !!g.developeronly,
+      isPublic: g.ispublic !== false
+    }));
+    const achievements = {};
+    for (const a of r.achievements) {
+      if (!a || !a.internal_name) continue;
+      achievements[String(a.internal_name)] = { groupId: Number(a.groupid) || 0, archived: !!a.archived };
+    }
+    return { hash: Number(r.schema_hash) || 0, version: Number(r.schema_version) || 0, groups, achievements };
+  } catch {
+    return null;
+  }
+}
+
 /** Global unlock % per achievement. Does not need an API key. */
 async function getGlobalPercentages(appid) {
   try {
@@ -251,7 +283,7 @@ async function downloadFile(url, filePath, fs) {
 }
 
 module.exports = {
-  SteamError, resolveSteamId, getOwnedGames, getPlayerAchievements, getSchema, getGlobalPercentages,
+  SteamError, resolveSteamId, getOwnedGames, getPlayerAchievements, getSchema, getGlobalPercentages, getAchievementSets,
   getAppDetails, searchStore, downloadFile, headerUrl, isGenericHeader, getPlayerSummary, _setFetch,
   normalizeIconUrl, iconCandidates
 };
